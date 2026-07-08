@@ -1,0 +1,32 @@
+{
+  "name": "cashkr-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "seed": "node seeds/seedDevices.js",
+    "seed:laptops": "node seeds/seedLaptops.js",
+    "seed:laptop:apple": "node seeds/seedLaptopApple.js",
+    "seed:laptop:dell": "node seeds/seedLaptopDell.js",
+    "seed:laptop:hp": "node seeds/seedLaptopHP.js",
+    "seed:laptop:lenovo": "node seeds/seedLaptopLenovo.js",
+    "seed:laptop:asus": "node seeds/seedLaptopAsus.js",
+    "seed:laptop:acer": "node seeds/seedLaptopAcer.js",
+    "seed:laptop:microsoft": "node seeds/seedLaptopMicrosoft.js",
+    "seed:laptop:msi": "node seeds/seedLaptopMSI.js",
+    "seed:laptop:razer": "node seeds/seedLaptopRazer.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.5.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.1",
+    "express-validator": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
