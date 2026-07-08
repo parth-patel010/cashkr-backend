@@ -22,15 +22,31 @@ connectDB();
 
 // Middleware
 const allowedOrigins = [
+  "http://localhost:5173",
   "http://localhost:5174",
   "https://cash-kr.vercel.app",
+  "https://cashkr-frontends.vercel.app",
   "https://www.devicekart.in",
-  "https://cashkr-frontends.vercel.app"
+  "https://devicekart.in",
+  "http://www.devicekart.in",
+  "http://devicekart.in",
 ];
+
+if (process.env.CLIENT_URL) {
+  allowedOrigins.push(process.env.CLIENT_URL);
+}
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  // Allow VPS IP access during setup (http://x.x.x.x)
+  if (/^https?:\/\/\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(origin)) return true;
+  return false;
+};
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
