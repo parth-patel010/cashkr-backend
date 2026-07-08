@@ -24,7 +24,8 @@ connectDB();
 const allowedOrigins = [
   "http://localhost:5174",
   "https://cash-kr.vercel.app",
-  "https://www.devicekart.in"
+  "https://www.devicekart.in",
+  "https://cashkr-frontends.vercel.app"
 ];
 
 app.use(cors({
