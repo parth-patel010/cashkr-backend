@@ -12,6 +12,7 @@ import {
   deleteDevice,
   getAllPartners,
   getAllOrders,
+  exportOrders,
   updateOrderStatus,
   getAllPincodes,
   createPincode,
@@ -45,6 +46,7 @@ router.delete('/devices/:id', deleteDevice);
 router.get('/partners', getAllPartners);
 
 // Orders
+router.get('/orders/export', exportOrders);
 router.get('/orders', getAllOrders);
 router.patch('/orders/:id/status', updateOrderStatus);
 

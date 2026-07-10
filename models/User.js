@@ -56,6 +56,15 @@ const userSchema = new mongoose.Schema({
     upiId: String,
     isDefault: { type: Boolean, default: false },
   }],
+  lastQuizDevice: {
+    category: { type: String, default: '' },
+    brand: { type: String, default: '' },
+    modelName: { type: String, default: '' },
+    slug: { type: String, default: '' },
+    storage: { type: String, default: '' },
+    quizPath: { type: String, default: '' },
+    loggedInAt: { type: Date },
+  },
 }, {
   timestamps: true,
 });

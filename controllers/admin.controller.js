@@ -263,20 +263,46 @@ export const getAllPartners = async (req, res, next) => {
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
+const buildOrderFilter = (query) => {
+  const { status, search, fromDate, toDate } = query;
+  const filter = {};
+
+  if (status) filter.status = status;
+  if (search) {
+    filter.$or = [
+      { orderId: new RegExp(search, 'i') },
+      { 'device.brand': new RegExp(search, 'i') },
+      { 'device.modelName': new RegExp(search, 'i') },
+    ];
+  }
+  if (fromDate || toDate) {
+    filter.createdAt = {};
+    if (fromDate) {
+      filter.createdAt.$gte = new Date(fromDate);
+    }
+    if (toDate) {
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = end;
+    }
+  }
+
+  return filter;
+};
+
+const csvEscape = (value) => {
+  const str = value == null ? '' : String(value);
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
 export const getAllOrders = async (req, res, next) => {
   try {
-    const { status, search, page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const filter = {};
-    if (status) filter.status = status;
-    if (search) {
-      filter.$or = [
-        { orderId: new RegExp(search, 'i') },
-        { 'device.brand': new RegExp(search, 'i') },
-        { 'device.modelName': new RegExp(search, 'i') },
-      ];
-    }
+    const filter = buildOrderFilter(req.query);
 
     const [orders, total] = await Promise.all([
       Order.find(filter)
@@ -289,6 +315,78 @@ export const getAllOrders = async (req, res, next) => {
     ]);
 
     res.json({ orders, total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportOrders = async (req, res, next) => {
+  try {
+    const filter = buildOrderFilter(req.query);
+
+    const orders = await Order.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(10000)
+      .populate('userId', 'name email phone')
+      .lean();
+
+    const headers = [
+      'Order ID',
+      'Status',
+      'Ordered At',
+      'Customer Name',
+      'Customer Phone',
+      'Customer Email',
+      'Category',
+      'Brand',
+      'Model',
+      'Storage',
+      'Final Price',
+      'Base Price',
+      'Pickup Date',
+      'Time Slot',
+      'City',
+      'State',
+      'Pincode',
+      'Address',
+      'Payment Method',
+    ];
+
+    const rows = orders.map((order) => {
+      const d = order.device || {};
+      const p = order.pickup || {};
+      const pb = order.priceBreakdown || {};
+      const u = order.userId || {};
+
+      return [
+        order.orderId,
+        order.status,
+        order.createdAt ? new Date(order.createdAt).toISOString() : '',
+        u.name || p.name || '',
+        u.phone || p.phone || '',
+        u.email || p.email || '',
+        d.category || '',
+        d.brand || '',
+        d.modelName || '',
+        d.storage || '',
+        pb.finalPrice ?? 0,
+        pb.basePrice ?? 0,
+        p.date || '',
+        p.timeSlot || '',
+        p.city || '',
+        p.state || '',
+        p.pincode || '',
+        p.address || '',
+        p.paymentMethod || '',
+      ].map(csvEscape).join(',');
+    });
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    const filename = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(`\uFEFF${csv}`);
   } catch (error) {
     next(error);
   }

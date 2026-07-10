@@ -167,9 +167,25 @@ export const sendOtp = async (req, res, next) => {
   }
 };
 
+const applyQuizContext = (user, quizContext) => {
+  if (!quizContext || typeof quizContext !== 'object') return;
+  const { category, brand, modelName, slug, storage, quizPath } = quizContext;
+  if (!slug && !modelName) return;
+
+  user.lastQuizDevice = {
+    category: category || 'mobile',
+    brand: brand || '',
+    modelName: modelName || '',
+    slug: slug || '',
+    storage: storage || '',
+    quizPath: quizPath || '',
+    loggedInAt: new Date(),
+  };
+};
+
 export const verifyOtp = async (req, res, next) => {
   try {
-    const { phone, otp, sessionId } = req.body;
+    const { phone, otp, sessionId, name, quizContext } = req.body;
     if (!phone || !otp || !sessionId) {
       return res.status(400).json({ message: 'Phone, OTP, and Session ID are required' });
     }
@@ -184,17 +200,27 @@ export const verifyOtp = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid or expired OTP' });
     }
 
-    // Find or create user by original phone number
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+
     let user = await User.findOne({ phone });
     let isNewUser = false;
 
     if (!user) {
       user = await User.create({
         phone,
-        name: 'User',
+        name: trimmedName || 'User',
       });
       isNewUser = true;
+    } else if (trimmedName) {
+      const hasPlaceholderName = !user.name || user.name.trim() === 'User';
+      if (hasPlaceholderName || isNewUser) {
+        user.name = trimmedName;
+      }
     }
+
+    applyQuizContext(user, quizContext);
+
+    const needsName = !user.name || user.name.trim() === 'User' || user.name.trim().length < 2;
 
     const accessToken = signAccessToken(user._id);
     const refreshToken = signRefreshToken(user._id);
@@ -214,6 +240,7 @@ export const verifyOtp = async (req, res, next) => {
       accessToken,
       refreshToken,
       isNewUser,
+      needsName,
     });
   } catch (error) {
     next(error);
