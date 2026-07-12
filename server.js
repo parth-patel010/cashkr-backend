@@ -14,6 +14,7 @@ import userRoutes from './routes/user.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import partnerRoutes from './routes/partner.routes.js';
 import pincodeRoutes from './routes/pincode.routes.js';
+import eventRoutes from './routes/event.routes.js';
 
 const app = express();
 
@@ -66,6 +67,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/pincodes', pincodeRoutes);
+app.use('/api/events', eventRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
