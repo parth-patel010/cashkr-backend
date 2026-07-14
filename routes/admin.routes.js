@@ -18,6 +18,8 @@ import {
   createPincode,
   updatePincode,
   deletePincode,
+  getAnalytics,
+  upsertMetaSpend,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -55,5 +57,9 @@ router.get('/pincodes', getAllPincodes);
 router.post('/pincodes', createPincode);
 router.put('/pincodes/:id', updatePincode);
 router.delete('/pincodes/:id', deletePincode);
+
+// Analytics
+router.get('/analytics', getAnalytics);
+router.put('/analytics/meta-spend', upsertMetaSpend);
 
 export default router;

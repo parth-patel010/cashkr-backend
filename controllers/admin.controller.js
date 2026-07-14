@@ -4,6 +4,24 @@ import Device from '../models/Device.js';
 import Order from '../models/Order.js';
 import PartnerApplication from '../models/PartnerApplication.js';
 import Pincode from '../models/Pincode.js';
+import MetaSpend from '../models/MetaSpend.js';
+
+const buildCreatedAtFilter = (fromDate, toDate) => {
+  if (!fromDate && !toDate) return {};
+  const createdAt = {};
+  if (fromDate) createdAt.$gte = new Date(fromDate);
+  if (toDate) {
+    const end = new Date(toDate);
+    end.setHours(23, 59, 59, 999);
+    createdAt.$lte = end;
+  }
+  return { createdAt };
+};
+
+const safeCost = (spend, count) => {
+  if (!count || count <= 0) return null;
+  return Math.round((spend / count) * 100) / 100;
+};
 
 // ─── Admin Login ──────────────────────────────────────────────────────────────
 
@@ -487,6 +505,70 @@ export const deletePincode = async (req, res, next) => {
       return res.status(404).json({ message: 'Pincode not found' });
     }
     res.json({ message: 'Pincode deleted successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+export const getAnalytics = async (req, res, next) => {
+  try {
+    const { fromDate = '', toDate = '' } = req.query;
+    const dateFilter = buildCreatedAtFilter(fromDate, toDate);
+
+    const [users, orders, completedOrders, metaSpendDoc] = await Promise.all([
+      User.countDocuments(dateFilter),
+      Order.countDocuments(dateFilter),
+      Order.find({ ...dateFilter, status: 'completed' })
+        .select('priceBreakdown.finalPrice')
+        .lean(),
+      fromDate && toDate
+        ? MetaSpend.findOne({ fromDate, toDate }).lean()
+        : Promise.resolve(null),
+    ]);
+
+    const revenue = completedOrders.reduce(
+      (sum, o) => sum + (o.priceBreakdown?.finalPrice || 0),
+      0
+    );
+    const metaSpend = metaSpendDoc?.amount ?? 0;
+
+    res.json({
+      fromDate: fromDate || null,
+      toDate: toDate || null,
+      users,
+      orders,
+      revenue,
+      metaSpend,
+      costPerUser: safeCost(metaSpend, users),
+      costPerOrder: safeCost(metaSpend, orders),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const upsertMetaSpend = async (req, res, next) => {
+  try {
+    const { fromDate, toDate, amount } = req.body;
+
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ message: 'fromDate and toDate are required' });
+    }
+
+    const numericAmount = Number(amount);
+    if (Number.isNaN(numericAmount) || numericAmount < 0) {
+      return res.status(400).json({ message: 'amount must be a non-negative number' });
+    }
+
+    const doc = await MetaSpend.findOneAndUpdate(
+      { fromDate, toDate },
+      { fromDate, toDate, amount: numericAmount },
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+
+    res.json(doc);
   } catch (error) {
     next(error);
   }
