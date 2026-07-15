@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -8,6 +9,7 @@ dotenv.config();
 import connectDB from './config/db.js';
 import { getAllowedOrigins, isAllowedOrigin } from './config/origins.js';
 import errorHandler from './middleware/errorHandler.js';
+import { initChatSocket } from './socket/chatSocket.js';
 
 import authRoutes from './routes/auth.routes.js';
 import deviceRoutes from './routes/device.routes.js';
@@ -20,12 +22,17 @@ import eventRoutes from './routes/event.routes.js';
 import offerRoutes from './routes/offer.routes.js';
 import buyRoutes from './routes/buy.routes.js';
 import repairRoutes from './routes/repair.routes.js';
+import chatRoutes from './routes/chat.routes.js';
 
 const app = express();
+const server = http.createServer(app);
 
 connectDB();
+initChatSocket(server, app);
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 
 app.use(cors({
   origin(origin, callback) {
@@ -57,6 +64,7 @@ app.use('/api/events', eventRoutes);
 app.use('/api/offers', offerRoutes);
 app.use('/api/buy', buyRoutes);
 app.use('/api/repair', repairRoutes);
+app.use('/api/chat', chatRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -69,6 +77,6 @@ app.get('/api/health', (req, res) => {
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

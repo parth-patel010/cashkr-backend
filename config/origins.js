@@ -21,8 +21,9 @@ export function isAllowedOrigin(origin) {
   if (!origin) return false;
   if (getAllowedOrigins().includes(origin)) return true;
 
-  // Allow VPS IP only outside production
   if (process.env.NODE_ENV !== 'production') {
+    // Local Expo / Vite ports during development
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
     return /^https?:\/\/\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(origin);
   }
 

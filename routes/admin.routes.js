@@ -55,6 +55,12 @@ import {
   adminUpdateRepairService,
   adminDeleteRepairService,
 } from '../controllers/repair.controller.js';
+import {
+  adminListConversations,
+  adminGetMessages,
+  adminSendMessage,
+  adminCloseConversation,
+} from '../controllers/chat.controller.js';
 import { upload, uploadVideo } from '../middleware/upload.js';
 
 const router = Router();
@@ -133,5 +139,11 @@ router.get('/repair-services', adminListRepairServices);
 router.post('/repair-services', adminCreateRepairService);
 router.put('/repair-services/:id', adminUpdateRepairService);
 router.delete('/repair-services/:id', adminDeleteRepairService);
+
+// Live chat
+router.get('/chat/conversations', adminListConversations);
+router.get('/chat/conversations/:id/messages', adminGetMessages);
+router.post('/chat/conversations/:id/messages', adminSendMessage);
+router.patch('/chat/conversations/:id/close', adminCloseConversation);
 
 export default router;
