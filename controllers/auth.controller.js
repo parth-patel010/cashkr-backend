@@ -142,8 +142,11 @@ export const sendOtp = async (req, res, next) => {
       return res.status(400).json({ message: 'Phone number is required' });
     }
 
-    const apiKey = process.env.TWO_FACTOR_API_KEY || 'a7aa1e56-670c-11f1-8f15-0200cd936042';
+    const apiKey = process.env.TWO_FACTOR_API_KEY;
     const template = process.env.TWO_FACTOR_TEMPLATE || 'OTPTEMPLATE';
+    if (!apiKey) {
+      return res.status(500).json({ message: 'OTP service is not configured' });
+    }
 
     // Format phone to digits only and add 91 if it's a 10-digit number
     const cleanPhone = phone.replace(/\D/g, '');
@@ -190,7 +193,10 @@ export const verifyOtp = async (req, res, next) => {
       return res.status(400).json({ message: 'Phone, OTP, and Session ID are required' });
     }
 
-    const apiKey = process.env.TWO_FACTOR_API_KEY || 'a7aa1e56-670c-11f1-8f15-0200cd936042';
+    const apiKey = process.env.TWO_FACTOR_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ message: 'OTP service is not configured' });
+    }
     const url = `https://2factor.in/API/V1/${apiKey}/SMS/VERIFY/${sessionId}/${otp}`;
 
     const response = await fetch(url);

@@ -2,9 +2,11 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import { createOrder, getUserOrders, getOrderById, cancelOrder, rescheduleOrder, updateOrderPaymentMethod } from '../controllers/order.controller.js';
 import auth from '../middleware/auth.js';
+import clientGate from '../middleware/clientGate.js';
 
 const router = Router();
 
+router.use(clientGate);
 router.use(auth);
 
 router.post('/', [

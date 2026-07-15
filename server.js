@@ -1,10 +1,12 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import dotenv from 'dotenv';
+dotenv.config();
+
 import connectDB from './config/db.js';
+import { getAllowedOrigins, isAllowedOrigin } from './config/origins.js';
 import errorHandler from './middleware/errorHandler.js';
 
 import authRoutes from './routes/auth.routes.js';
@@ -15,51 +17,35 @@ import adminRoutes from './routes/admin.routes.js';
 import partnerRoutes from './routes/partner.routes.js';
 import pincodeRoutes from './routes/pincode.routes.js';
 import eventRoutes from './routes/event.routes.js';
+import offerRoutes from './routes/offer.routes.js';
+import buyRoutes from './routes/buy.routes.js';
+import repairRoutes from './routes/repair.routes.js';
 
 const app = express();
 
-// Connect to MongoDB
 connectDB();
 
-// Middleware
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "https://cash-kr.vercel.app",
-  "https://cashkr-frontends.vercel.app",
-  "https://www.devicekart.in",
-  "https://devicekart.in",
-  "http://www.devicekart.in",
-  "http://devicekart.in",
-];
-
-if (process.env.CLIENT_URL) {
-  allowedOrigins.push(process.env.CLIENT_URL);
-}
-
-const isAllowedOrigin = (origin) => {
-  if (!origin) return true;
-  if (allowedOrigins.includes(origin)) return true;
-  // Allow VPS IP access during setup (http://x.x.x.x)
-  if (/^https?:\/\/\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(origin)) return true;
-  return false;
-};
+app.use(helmet());
 
 app.use(cors({
-  origin: function (origin, callback) {
+  origin(origin, callback) {
+    // Mobile apps and server-to-server often omit Origin
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
     if (isAllowedOrigin(origin)) {
       callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
+      return;
     }
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
-// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/orders', orderRoutes);
@@ -68,16 +54,21 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/pincodes', pincodeRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/offers', offerRoutes);
+app.use('/api/buy', buyRoutes);
+app.use('/api/repair', repairRoutes);
 
-// Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    allowedOrigins: getAllowedOrigins().length,
+  });
 });
 
-// Error handler
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

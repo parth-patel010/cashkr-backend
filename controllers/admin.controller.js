@@ -2,6 +2,8 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Device from '../models/Device.js';
 import Order from '../models/Order.js';
+import BuyOrder from '../models/BuyOrder.js';
+import RepairOrder from '../models/RepairOrder.js';
 import PartnerApplication from '../models/PartnerApplication.js';
 import Pincode from '../models/Pincode.js';
 import MetaSpend from '../models/MetaSpend.js';
@@ -431,6 +433,112 @@ export const updateOrderStatus = async (req, res, next) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
+    res.json(order);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAllBuyOrders = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, status, search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const filter = {};
+    if (status) filter.status = status;
+    if (search) {
+      filter.$or = [
+        { orderId: new RegExp(search, 'i') },
+        { 'productSnapshot.brand': new RegExp(search, 'i') },
+        { 'productSnapshot.modelName': new RegExp(search, 'i') },
+        { 'productSnapshot.title': new RegExp(search, 'i') },
+      ];
+    }
+
+    const [orders, total] = await Promise.all([
+      BuyOrder.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('userId', 'name email phone')
+        .lean(),
+      BuyOrder.countDocuments(filter),
+    ]);
+
+    res.json({
+      orders,
+      total,
+      page: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)) || 1,
+      statuses: ['placed', 'confirmed', 'shipped', 'delivered', 'cancelled'],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateBuyOrderStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['placed', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid buy order status' });
+    }
+
+    const order = await BuyOrder.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!order) return res.status(404).json({ message: 'Buy order not found' });
+    res.json(order);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAllRepairOrders = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, status, search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const filter = {};
+    if (status) filter.status = status;
+    if (search) {
+      filter.$or = [
+        { orderId: new RegExp(search, 'i') },
+        { 'snapshot.brand': new RegExp(search, 'i') },
+        { 'snapshot.title': new RegExp(search, 'i') },
+        { 'snapshot.issueLabel': new RegExp(search, 'i') },
+      ];
+    }
+
+    const [orders, total] = await Promise.all([
+      RepairOrder.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('userId', 'name email phone')
+        .lean(),
+      RepairOrder.countDocuments(filter),
+    ]);
+
+    res.json({
+      orders,
+      total,
+      page: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)) || 1,
+      statuses: ['booked', 'assigned', 'picked', 'repairing', 'quality_check', 'delivered', 'cancelled'],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateRepairOrderStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['booked', 'assigned', 'picked', 'repairing', 'quality_check', 'delivered', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid repair order status' });
+    }
+
+    const order = await RepairOrder.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!order) return res.status(404).json({ message: 'Repair order not found' });
     res.json(order);
   } catch (error) {
     next(error);

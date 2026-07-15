@@ -91,7 +91,15 @@ export const createOrder = async (req, res, next) => {
 
 export const getUserOrders = async (req, res, next) => {
   try {
-    const orders = await Order.find({ userId: req.user.id })
+    const { type } = req.query;
+    const query = { userId: req.user.id };
+
+    // Current catalog is sell-only; type=sell returns all. buy/repair reserved for later.
+    if (type === 'buy' || type === 'repair') {
+      return res.json([]);
+    }
+
+    const orders = await Order.find(query)
       .sort({ createdAt: -1 })
       .lean();
 

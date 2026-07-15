@@ -35,6 +35,14 @@ const deviceSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  videoUrl: {
+    type: String,
+    default: '',
+  },
+  description: {
+    type: String,
+    default: '',
+  },
 
   // Laptop-specific fields
   processorFamily: { type: String, default: '' },    // "Intel Core i5", "Apple M3", "AMD Ryzen 7"

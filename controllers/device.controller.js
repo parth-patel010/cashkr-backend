@@ -1,8 +1,114 @@
 import Device from '../models/Device.js';
+import Brand from '../models/Brand.js';
+
+/** Map API category aliases used by the app/admin */
+const CATEGORY_ALIASES = {
+  phone: 'mobile',
+  phones: 'mobile',
+  mobile: 'mobile',
+};
 
 export const getBrands = async (req, res, next) => {
   try {
-    const { category = 'mobile' } = req.query;
+    const raw = req.query.category || 'mobile';
+    const category = CATEGORY_ALIASES[raw] || raw;
+    const offer = req.query.offer || 'sell';
+
+    // Prefer Brand catalog for this category + offer
+    const brandQuery = {
+      isActive: true,
+      categories: category,
+    };
+    if (offer && offer !== 'all') {
+      brandQuery.offers = offer;
+    }
+
+    const catalog = await Brand.find(brandQuery)
+      .sort({ sortOrder: 1, name: 1 })
+      .lean();
+
+    // Device counts for sell offers only
+    const deviceCategories = ['mobile', 'laptop', 'tablet', 'mac'];
+    let modelCounts = {};
+
+    if (deviceCategories.includes(category) && offer === 'sell') {
+      const grouped = await Device.aggregate([
+        { $match: { category, isActive: true } },
+        {
+          $group: {
+            _id: '$brand',
+            modelCount: { $sum: 1 },
+            maxPrice: { $max: { $max: '$variants.basePrice' } },
+          },
+        },
+      ]);
+      modelCounts = Object.fromEntries(
+        grouped.map((row) => [
+          String(row._id).toLowerCase(),
+          { modelCount: row.modelCount, maxPrice: row.maxPrice },
+        ]),
+      );
+    }
+
+    if (offer === 'buy') {
+      const BuyProduct = (await import('../models/BuyProduct.js')).default;
+      const grouped = await BuyProduct.aggregate([
+        { $match: { category, isActive: true } },
+        {
+          $group: {
+            _id: '$brand',
+            modelCount: { $sum: 1 },
+            maxPrice: { $max: { $max: '$conditions.price' } },
+          },
+        },
+      ]);
+      modelCounts = Object.fromEntries(
+        grouped.map((row) => [
+          String(row._id).toLowerCase(),
+          { modelCount: row.modelCount, maxPrice: row.maxPrice },
+        ]),
+      );
+    }
+
+    if (offer === 'repair') {
+      const RepairService = (await import('../models/RepairService.js')).default;
+      const grouped = await RepairService.aggregate([
+        { $match: { category, isActive: true } },
+        {
+          $group: {
+            _id: '$brand',
+            modelCount: { $sum: 1 },
+            maxPrice: { $max: { $max: '$issues.price' } },
+          },
+        },
+      ]);
+      modelCounts = Object.fromEntries(
+        grouped.map((row) => [
+          String(row._id).toLowerCase(),
+          { modelCount: row.modelCount, maxPrice: row.maxPrice },
+        ]),
+      );
+    }
+
+    if (catalog.length > 0) {
+      const brands = catalog.map((b) => {
+        const stats = modelCounts[b.name.toLowerCase()] || { modelCount: 0, maxPrice: 0 };
+        return {
+          brand: b.name,
+          slug: b.slug,
+          logoUrl: b.logoUrl || '',
+          color: b.color || '#2F6BFF',
+          modelCount: stats.modelCount,
+          maxPrice: stats.maxPrice || 0,
+        };
+      });
+      return res.json(brands);
+    }
+
+    // Fallback: aggregate sell devices if Brand catalog empty
+    if (offer !== 'sell' || !deviceCategories.includes(category)) {
+      return res.json([]);
+    }
 
     const brands = await Device.aggregate([
       { $match: { category, isActive: true } },
@@ -40,21 +146,34 @@ export const getModels = async (req, res, next) => {
 
     const models = await Device.find(
       { brand: new RegExp(`^${brand}$`, 'i'), category, isActive: true },
-      { modelName: 1, slug: 1, imageUrl: 1, variants: 1, processorFamily: 1, gpuType: 1, isGamingLaptop: 1, tier: 1 }
+      {
+        modelName: 1,
+        slug: 1,
+        imageUrl: 1,
+        videoUrl: 1,
+        description: 1,
+        variants: 1,
+        processorFamily: 1,
+        gpuType: 1,
+        isGamingLaptop: 1,
+        tier: 1,
+      },
     ).sort({ 'variants.0.basePrice': -1 });
 
-    const result = models.map(m => ({
+    const result = models.map((m) => ({
       modelName: m.modelName,
       slug: m.slug,
       imageUrl: m.imageUrl,
-      maxPrice: Math.max(...m.variants.map(v => v.basePrice)),
-      minPrice: Math.min(...m.variants.map(v => v.basePrice)),
+      videoUrl: m.videoUrl || '',
+      description: m.description || '',
+      maxPrice: Math.max(...m.variants.map((v) => v.basePrice)),
+      minPrice: Math.min(...m.variants.map((v) => v.basePrice)),
       variantCount: m.variants.length,
       processorFamily: m.processorFamily || '',
       gpuType: m.gpuType || '',
       isGamingLaptop: m.isGamingLaptop || false,
       tier: m.tier || '',
-      ramOptions: [...new Set(m.variants.map(v => v.ram).filter(Boolean))],
+      ramOptions: [...new Set(m.variants.map((v) => v.ram).filter(Boolean))],
     }));
 
     res.json(result);

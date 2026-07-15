@@ -1,27 +1,75 @@
 import { Router } from 'express';
-import { 
-  getMe, 
-  updateMe, 
+import { body } from 'express-validator';
+import {
+  getMe,
+  updateMe,
+  deleteMe,
   getReferrals,
+  getEarnings,
+  getAddresses,
   addAddress,
+  updateAddress,
   deleteAddress,
+  getPaymentMethods,
   addPaymentMethod,
-  deletePaymentMethod
+  updatePaymentMethod,
+  deletePaymentMethod,
 } from '../controllers/user.controller.js';
 import auth from '../middleware/auth.js';
+import clientGate from '../middleware/clientGate.js';
 
 const router = Router();
+
+router.use(clientGate);
 router.use(auth);
+
 router.get('/me', getMe);
 router.patch('/me', updateMe);
+router.delete('/me', deleteMe);
 router.get('/referrals', getReferrals);
+router.get('/me/earnings', getEarnings);
 
-// Address routes
-router.post('/me/addresses', addAddress);
+router.get('/me/addresses', getAddresses);
+router.post(
+  '/me/addresses',
+  [
+    body('name').optional().trim().notEmpty(),
+    body('phone').optional().trim().notEmpty(),
+    body('pincode').optional().trim().notEmpty(),
+    body('address').optional().trim().notEmpty(),
+    body('city').optional().trim().notEmpty(),
+    body('state').optional().trim().notEmpty(),
+  ],
+  addAddress,
+);
+router.patch('/me/addresses/:id', updateAddress);
 router.delete('/me/addresses/:id', deleteAddress);
 
-// Payment method routes
-router.post('/me/payments', addPaymentMethod);
+router.get('/me/payments', getPaymentMethods);
+router.post(
+  '/me/payments',
+  [
+    body('type').isIn(['bank', 'upi']).withMessage('type must be bank or upi'),
+    body('upiId').if(body('type').equals('upi')).trim().notEmpty().withMessage('UPI ID is required'),
+    body('accountNumber')
+      .if(body('type').equals('bank'))
+      .trim()
+      .notEmpty()
+      .withMessage('Account number is required'),
+    body('ifscCode')
+      .if(body('type').equals('bank'))
+      .trim()
+      .notEmpty()
+      .withMessage('IFSC is required'),
+    body('accountName')
+      .if(body('type').equals('bank'))
+      .trim()
+      .notEmpty()
+      .withMessage('Account name is required'),
+  ],
+  addPaymentMethod,
+);
+router.patch('/me/payments/:id', updatePaymentMethod);
 router.delete('/me/payments/:id', deletePaymentMethod);
 
 export default router;

@@ -15,7 +15,9 @@
     "seed:laptop:acer": "node seeds/seedLaptopAcer.js",
     "seed:laptop:microsoft": "node seeds/seedLaptopMicrosoft.js",
     "seed:laptop:msi": "node seeds/seedLaptopMSI.js",
-    "seed:laptop:razer": "node seeds/seedLaptopRazer.js"
+    "seed:laptop:razer": "node seeds/seedLaptopRazer.js",
+    "seed:brands": "node seeds/seedBrands.js",
+    "seed:repair": "node seeds/seedRepair.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -24,7 +26,9 @@
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.1",
+    "express-rate-limit": "^8.5.2",
     "express-validator": "^7.2.0",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.2",
     "multer": "^1.4.5-lts.1"
