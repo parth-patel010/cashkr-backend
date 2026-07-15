@@ -40,6 +40,7 @@ const userSchema = new mongoose.Schema({
     label: { type: String, default: 'Home' }, // Home, Office, etc.
     name: String,
     phone: String,
+    alternatePhone: String, // optional contact for pickup
     pincode: String,
     address: String,
     landmark: String,

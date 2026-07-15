@@ -64,6 +64,7 @@ const orderSchema = new mongoose.Schema({
   pickup: {
     name: String,
     phone: String,
+    alternatePhone: String, // optional alternate contact from address
     email: String,
     pincode: String,
     address: String,

@@ -1,6 +1,42 @@
 import Order from '../models/Order.js';
 import { validationResult } from 'express-validator';
 
+const DUPLICATE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+
+const normalizeList = (value) => {
+  if (!Array.isArray(value)) return [];
+  return [...value].map(String).sort();
+};
+
+/** Build a comparable fingerprint of device specs + offered price for this user. */
+const buildOrderSpecKey = (device = {}, priceBreakdown = {}) => {
+  const d = device || {};
+  return JSON.stringify({
+    category: d.category || '',
+    brand: d.brand || '',
+    modelName: d.modelName || '',
+    slug: d.slug || '',
+    storage: d.storage || '',
+    ram: d.ram || '',
+    processor: d.processor || '',
+    generation: d.generation || '',
+    deviceAge: d.deviceAge || '',
+    yearOfPurchase: d.yearOfPurchase || '',
+    ableToMakeCalls: d.ableToMakeCalls ?? null,
+    isTouchScreenWorking: d.isTouchScreenWorking ?? null,
+    isScreenOriginal: d.isScreenOriginal ?? null,
+    underWarranty: d.underWarranty ?? null,
+    hasGSTBill: d.hasGSTBill ?? null,
+    eSIMSupport: d.eSIMSupport || '',
+    physicalIssues: normalizeList(d.physicalIssues),
+    technicalIssues: normalizeList(d.technicalIssues),
+    functionalIssues: normalizeList(d.functionalIssues),
+    screenIssues: normalizeList(d.screenIssues),
+    accessories: Array.isArray(d.accessories) ? normalizeList(d.accessories) : (d.accessories || ''),
+    finalPrice: priceBreakdown?.finalPrice ?? null,
+  });
+};
+
 export const createOrder = async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -9,9 +45,33 @@ export const createOrder = async (req, res, next) => {
     }
 
     const { device, priceBreakdown, pickup } = req.body;
+    const userId = req.user.id;
+    const since = new Date(Date.now() - DUPLICATE_WINDOW_MS);
+    const incomingKey = buildOrderSpecKey(device, priceBreakdown);
+
+    const recentOrders = await Order.find({
+      userId,
+      createdAt: { $gte: since },
+      status: { $ne: 'cancelled' },
+    })
+      .sort({ createdAt: -1 })
+      .select('orderId device priceBreakdown createdAt')
+      .lean();
+
+    const duplicate = recentOrders.find(
+      (existing) => buildOrderSpecKey(existing.device, existing.priceBreakdown) === incomingKey
+    );
+
+    if (duplicate) {
+      return res.status(409).json({
+        message: 'An order with the same device details is already placed for you. Please try again after 30 minutes if you still need a new one.',
+        orderId: duplicate.orderId,
+        alreadyPlaced: true,
+      });
+    }
 
     const order = await Order.create({
-      userId: req.user.id,
+      userId,
       device,
       priceBreakdown,
       pickup,

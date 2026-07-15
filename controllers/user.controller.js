@@ -71,7 +71,11 @@ export const addAddress = async (req, res, next) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const newAddress = req.body;
+    const newAddress = { ...req.body };
+    if (typeof newAddress.alternatePhone === 'string') {
+      newAddress.alternatePhone = newAddress.alternatePhone.trim();
+      if (!newAddress.alternatePhone) delete newAddress.alternatePhone;
+    }
     if (newAddress.isDefault) {
       user.addresses.forEach(addr => addr.isDefault = false);
     } else if (user.addresses.length === 0) {
