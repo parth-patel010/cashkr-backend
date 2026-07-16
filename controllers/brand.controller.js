@@ -199,10 +199,10 @@ export const uploadBrandLogo = async (req, res, next) => {
 export const uploadMediaVideo = async (req, res, next) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'Video file is required (max 500KB)' });
+      return res.status(400).json({ message: 'Video file is required (max 10MB)' });
     }
-    if (req.file.size > 500 * 1024) {
-      return res.status(400).json({ message: 'Video must be 500KB or less' });
+    if (req.file.size > 10 * 1024 * 1024) {
+      return res.status(400).json({ message: 'Video must be 10MB or less' });
     }
 
     const result = await uploadBufferToCloudinary(

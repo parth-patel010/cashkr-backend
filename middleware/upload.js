@@ -15,10 +15,10 @@ export const upload = multer({
   },
 });
 
-/** Videos hard-capped at 500KB as requested */
+/** Videos capped at 10MB */
 export const uploadVideo = multer({
   storage,
-  limits: { fileSize: 500 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
     if (!file.mimetype?.startsWith('video/')) {
       cb(new Error('Only video uploads are allowed'));

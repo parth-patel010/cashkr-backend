@@ -12,7 +12,7 @@ const slugify = (value = '') =>
 const normalizeConditions = (conditions = []) => {
   if (!Array.isArray(conditions)) return [];
   return conditions
-    .filter((c) => c && BUY_CONDITIONS.includes(c.key) && Number(c.price) >= 0)
+    .filter((c) => c && BUY_CONDITIONS.includes(c.key) && Number(c.price) > 0)
     .map((c) => ({
       key: c.key,
       label: c.label || BUY_CONDITION_LABELS[c.key],
@@ -23,6 +23,18 @@ const normalizeConditions = (conditions = []) => {
     }));
 };
 
+/** Public responses only expose conditions that have a price set in admin. */
+const withPricedConditions = (product) => {
+  const conditions = (product.conditions || []).filter((c) => Number(c?.price) > 0);
+  const prices = conditions.map((c) => c.price);
+  return {
+    ...product,
+    conditions,
+    minPrice: prices.length ? Math.min(...prices) : 0,
+    maxPrice: prices.length ? Math.max(...prices) : 0,
+  };
+};
+
 export const listBuyProductsPublic = async (req, res, next) => {
   try {
     const { brand, category = 'mobile' } = req.query;
@@ -30,15 +42,7 @@ export const listBuyProductsPublic = async (req, res, next) => {
     if (brand) query.brand = new RegExp(`^${brand}$`, 'i');
 
     const products = await BuyProduct.find(query).sort({ sortOrder: 1, createdAt: -1 }).lean();
-    const mapped = products.map((p) => {
-      const prices = (p.conditions || []).map((c) => c.price);
-      return {
-        ...p,
-        minPrice: prices.length ? Math.min(...prices) : 0,
-        maxPrice: prices.length ? Math.max(...prices) : 0,
-      };
-    });
-    res.json(mapped);
+    res.json(products.map(withPricedConditions).filter((p) => p.conditions.length > 0));
   } catch (error) {
     next(error);
   }
@@ -48,7 +52,11 @@ export const getBuyProductBySlug = async (req, res, next) => {
   try {
     const product = await BuyProduct.findOne({ slug: req.params.slug, isActive: true }).lean();
     if (!product) return res.status(404).json({ message: 'Product not found' });
-    res.json(product);
+    const mapped = withPricedConditions(product);
+    if (!mapped.conditions.length) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    res.json(mapped);
   } catch (error) {
     next(error);
   }
@@ -138,10 +146,10 @@ export const adminDeleteBuyProduct = async (req, res, next) => {
 export const uploadBuyVideo = async (req, res, next) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'Video file is required (max 500KB)' });
+      return res.status(400).json({ message: 'Video file is required (max 10MB)' });
     }
-    if (req.file.size > 500 * 1024) {
-      return res.status(400).json({ message: 'Video must be 500KB or less' });
+    if (req.file.size > 10 * 1024 * 1024) {
+      return res.status(400).json({ message: 'Video must be 10MB or less' });
     }
     const result = await uploadBufferToCloudinary(req.file.buffer, 'devicekart/buy-videos', 'video');
     res.status(201).json({ videoUrl: result.secure_url, publicId: result.public_id });
@@ -163,7 +171,7 @@ export const createBuyOrder = async (req, res, next) => {
     }
 
     const condition = product.conditions.find((c) => c.key === conditionKey);
-    if (!condition) {
+    if (!condition || Number(condition.price) <= 0) {
       return res.status(400).json({ message: 'Invalid condition selected' });
     }
     if (condition.stock < 1) {
