@@ -61,6 +61,10 @@ import {
   adminDeleteTraining,
   adminAssignOrderVendor,
 } from '../controllers/adminVendor.controller.js';
+import {
+  adminListCustomPricing,
+  adminBulkSaveCustomPricing,
+} from '../controllers/customPricing.controller.js';
 
 import {
   adminListRepairServices,
@@ -172,5 +176,8 @@ router.get('/vendor-training', adminListTraining);
 router.post('/vendor-training', adminUpsertTraining);
 router.put('/vendor-training/:id', adminUpsertTraining);
 router.delete('/vendor-training/:id', adminDeleteTraining);
+
+router.get('/custom-pricing', adminListCustomPricing);
+router.put('/custom-pricing', adminBulkSaveCustomPricing);
 
 export default router;

@@ -66,6 +66,7 @@ export const adminCreateVendor = async (req, res, next) => {
       servicePincodes: pincodes,
       isActive: req.body.isActive !== false,
       managerPhone: req.body.managerPhone || '',
+      orderCreditCost: Number(req.body.orderCreditCost) || 0,
       walletBalance: Number(req.body.walletBalance) || 0,
       credits: Number(req.body.credits) || 0,
       virtualAccount: req.body.virtualAccount || {},
@@ -87,6 +88,8 @@ export const adminUpdateVendor = async (req, res, next) => {
         .split(',')
         .map((p) => p.trim())
         .filter(Boolean);
+    } else if (Array.isArray(updates.servicePincodes)) {
+      updates.servicePincodes = updates.servicePincodes.map(String).filter(Boolean);
     }
     delete updates._id;
 

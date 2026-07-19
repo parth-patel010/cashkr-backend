@@ -123,7 +123,40 @@ export const getOrderById = async (req, res, next) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    res.json(order);
+    const payload = { ...order };
+    // Expose pickup OTP only to order owner while pending
+    if (order.reachedAt && !order.pickupOtpVerifiedAt && order.pickupOtpPlain) {
+      payload.pickupOtp = order.pickupOtpPlain;
+      payload.pickupOtpExpiresAt = order.pickupOtpExpiresAt;
+    } else {
+      delete payload.pickupOtpPlain;
+      delete payload.pickupOtpHash;
+    }
+    delete payload.pickupOtpHash;
+
+    res.json(payload);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPickupOtp = async (req, res, next) => {
+  try {
+    const order = await Order.findOne({ orderId: req.params.orderId });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.userId.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    if (!order.reachedAt || order.pickupOtpVerifiedAt) {
+      return res.status(404).json({ message: 'No active pickup OTP' });
+    }
+    if (order.pickupOtpExpiresAt && order.pickupOtpExpiresAt < new Date()) {
+      return res.status(400).json({ message: 'OTP expired' });
+    }
+    res.json({
+      otp: order.pickupOtpPlain,
+      expiresAt: order.pickupOtpExpiresAt,
+    });
   } catch (error) {
     next(error);
   }

@@ -116,6 +116,22 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  reachedAt: { type: Date, default: null },
+  pickupOtpHash: { type: String, default: '' },
+  pickupOtpPlain: { type: String, default: '' }, // temporary in-app OTP for customer; cleared after verify
+  pickupOtpExpiresAt: { type: Date, default: null },
+  pickupOtpVerifiedAt: { type: Date, default: null },
+  pickupPhotos: {
+    type: [
+      {
+        angle: { type: String },
+        url: { type: String },
+        uploadedAt: { type: Date },
+      },
+    ],
+    default: [],
+  },
+  vendorPriceAdjustment: { type: Number, default: 0 },
 }, {
   timestamps: true,
 });

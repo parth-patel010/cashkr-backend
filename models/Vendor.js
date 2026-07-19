@@ -21,6 +21,7 @@ const vendorSchema = new mongoose.Schema(
       vpa: { type: String, default: '' },
     },
     managerPhone: { type: String, default: '' },
+    orderCreditCost: { type: Number, default: 0 },
     vendorCode: {
       type: String,
       unique: true,

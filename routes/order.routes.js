@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { createOrder, getUserOrders, getOrderById, cancelOrder, rescheduleOrder, updateOrderPaymentMethod } from '../controllers/order.controller.js';
+import { createOrder, getUserOrders, getOrderById, cancelOrder, rescheduleOrder, updateOrderPaymentMethod, getPickupOtp } from '../controllers/order.controller.js';
 import auth from '../middleware/auth.js';
 import clientGate from '../middleware/clientGate.js';
 
@@ -23,6 +23,7 @@ router.post('/', [
 ], createOrder);
 
 router.get('/', getUserOrders);
+router.get('/:orderId/pickup-otp', getPickupOtp);
 router.get('/:orderId', getOrderById);
 router.patch('/:orderId/cancel', cancelOrder);
 router.patch('/:orderId/reschedule', rescheduleOrder);
