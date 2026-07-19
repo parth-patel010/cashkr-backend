@@ -76,8 +76,8 @@ export const createOrder = async (req, res, next) => {
       priceBreakdown,
       pickup,
       status: 'placed',
-      partnerName: 'Rajesh Kumar',
-      partnerPhone: '+91 98765 43210',
+      partnerName: '',
+      partnerPhone: '',
     });
 
     res.status(201).json({

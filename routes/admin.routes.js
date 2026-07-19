@@ -50,6 +50,19 @@ import {
   uploadBuyVideo,
 } from '../controllers/buy.controller.js';
 import {
+  adminListVendors,
+  adminGetVendor,
+  adminCreateVendor,
+  adminUpdateVendor,
+  adminAdjustWallet,
+  adminApprovePartnerAsVendor,
+  adminListTraining,
+  adminUpsertTraining,
+  adminDeleteTraining,
+  adminAssignOrderVendor,
+} from '../controllers/adminVendor.controller.js';
+
+import {
   adminListRepairServices,
   adminCreateRepairService,
   adminUpdateRepairService,
@@ -145,5 +158,19 @@ router.get('/chat/conversations', adminListConversations);
 router.get('/chat/conversations/:id/messages', adminGetMessages);
 router.post('/chat/conversations/:id/messages', adminSendMessage);
 router.patch('/chat/conversations/:id/close', adminCloseConversation);
+
+// Vendors (field partners)
+router.get('/vendors', adminListVendors);
+router.get('/vendors/:id', adminGetVendor);
+router.post('/vendors', adminCreateVendor);
+router.put('/vendors/:id', adminUpdateVendor);
+router.post('/vendors/:id/adjust-wallet', adminAdjustWallet);
+router.post('/partners/:id/approve-vendor', adminApprovePartnerAsVendor);
+router.patch('/orders/:orderId/assign-vendor', adminAssignOrderVendor);
+
+router.get('/vendor-training', adminListTraining);
+router.post('/vendor-training', adminUpsertTraining);
+router.put('/vendor-training/:id', adminUpsertTraining);
+router.delete('/vendor-training/:id', adminDeleteTraining);
 
 export default router;

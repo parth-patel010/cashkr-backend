@@ -77,9 +77,37 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['placed', 'scheduled', 'assigned', 'picked', 'verified', 'payment_initiated', 'completed', 'cancelled'],
+    enum: ['placed', 'scheduled', 'assigned', 'picked', 'verified', 'payment_initiated', 'completed', 'cancelled', 'failed'],
     default: 'placed',
   },
+  vendorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Vendor',
+    default: null,
+    index: true,
+  },
+  assignedAt: {
+    type: Date,
+    default: null,
+  },
+  failedReason: {
+    type: String,
+    default: '',
+  },
+  toBeFailed: {
+    type: Boolean,
+    default: false,
+  },
+  vendorIncentive: {
+    type: Number,
+    default: 0,
+  },
+  deviceReport: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
+  imei1: { type: String, default: '' },
+  imei2: { type: String, default: '' },
   partnerName: {
     type: String,
     default: '',
@@ -93,6 +121,8 @@ const orderSchema = new mongoose.Schema({
 });
 
 orderSchema.index({ userId: 1, createdAt: -1 });
+orderSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
+orderSchema.index({ 'pickup.pincode': 1, status: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 export default Order;
