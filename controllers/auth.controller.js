@@ -242,6 +242,7 @@ export const verifyOtp = async (req, res, next) => {
         email: user.email || '',
         phone: user.phone,
         referralCode: user.referralCode,
+        addresses: user.addresses || [],
       },
       accessToken,
       refreshToken,
