@@ -187,10 +187,22 @@ export const addAddress = async (req, res, next) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const newAddress = { ...req.body };
-    if (typeof newAddress.alternatePhone === 'string') {
-      newAddress.alternatePhone = newAddress.alternatePhone.trim();
-      if (!newAddress.alternatePhone) delete newAddress.alternatePhone;
+
+    // Drop empty optional strings so they don't overwrite/store blanks
+    ['name', 'phone', 'alternatePhone', 'landmark', 'state', 'label'].forEach((key) => {
+      if (typeof newAddress[key] === 'string') {
+        newAddress[key] = newAddress[key].trim();
+        if (!newAddress[key]) delete newAddress[key];
+      }
+    });
+
+    if (!newAddress.name) {
+      newAddress.name = user.name && user.name !== 'User' ? user.name : 'Customer';
     }
+    if (!newAddress.phone) {
+      newAddress.phone = user.phone || '';
+    }
+
     if (newAddress.isDefault) {
       user.addresses.forEach((addr) => {
         addr.isDefault = false;

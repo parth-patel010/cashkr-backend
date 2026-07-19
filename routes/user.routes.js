@@ -33,12 +33,13 @@ router.get('/me/addresses', getAddresses);
 router.post(
   '/me/addresses',
   [
-    body('name').optional().trim().notEmpty(),
-    body('phone').optional().trim().notEmpty(),
-    body('pincode').optional().trim().notEmpty(),
-    body('address').optional().trim().notEmpty(),
-    body('city').optional().trim().notEmpty(),
-    body('state').optional().trim().notEmpty(),
+    body('name').optional({ values: 'falsy' }).trim().notEmpty(),
+    body('phone').optional({ values: 'falsy' }).trim().notEmpty(),
+    body('alternatePhone').optional({ values: 'falsy' }).trim().isLength({ min: 10, max: 10 }),
+    body('pincode').trim().notEmpty().withMessage('Pincode is required'),
+    body('address').trim().notEmpty().withMessage('Address is required'),
+    body('city').trim().notEmpty().withMessage('City is required'),
+    body('state').optional({ values: 'falsy' }).trim().notEmpty(),
   ],
   addAddress,
 );
