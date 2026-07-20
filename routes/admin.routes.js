@@ -62,9 +62,9 @@ import {
   adminAssignOrderVendor,
 } from '../controllers/adminVendor.controller.js';
 import {
-  adminListCustomPricing,
-  adminBulkSaveCustomPricing,
-} from '../controllers/customPricing.controller.js';
+  adminGetAppSettings,
+  adminUpdateAppSettings,
+} from '../controllers/appSettings.controller.js';
 
 import {
   adminListRepairServices,
@@ -177,7 +177,7 @@ router.post('/vendor-training', adminUpsertTraining);
 router.put('/vendor-training/:id', adminUpsertTraining);
 router.delete('/vendor-training/:id', adminDeleteTraining);
 
-router.get('/custom-pricing', adminListCustomPricing);
-router.put('/custom-pricing', adminBulkSaveCustomPricing);
+router.get('/app-settings', adminGetAppSettings);
+router.put('/app-settings', adminUpdateAppSettings);
 
 export default router;

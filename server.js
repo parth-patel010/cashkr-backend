@@ -24,6 +24,7 @@ import buyRoutes from './routes/buy.routes.js';
 import repairRoutes from './routes/repair.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import vendorRoutes from './routes/vendor.routes.js';
+import appSettingsRoutes from './routes/appSettings.routes.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -67,6 +68,7 @@ app.use('/api/buy', buyRoutes);
 app.use('/api/repair', repairRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/vendor', vendorRoutes);
+app.use('/api/app-settings', appSettingsRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({

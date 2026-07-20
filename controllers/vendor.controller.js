@@ -6,8 +6,6 @@ import VendorLedgerEntry from '../models/VendorLedgerEntry.js';
 import Order from '../models/Order.js';
 import Device from '../models/Device.js';
 import Pincode from '../models/Pincode.js';
-import CustomPricingItem from '../models/CustomPricingItem.js';
-import { ensureCustomPricingSeed } from './customPricing.controller.js';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 
@@ -767,7 +765,7 @@ export const markReached = async (req, res, next) => {
     order.pickupOtpVerifiedAt = null;
     await order.save();
 
-    res.json({ message: 'Reached. Ask customer for the OTP shown on their app.' });
+    res.json({ message: 'Reached. Ask customer for the OTP shown on their app or website.' });
   } catch (error) {
     next(error);
   }
@@ -836,17 +834,48 @@ export const uploadPickupPhotos = async (req, res, next) => {
 export const setPriceAdjustment = async (req, res, next) => {
   try {
     const amount = Number(req.body.amount) || 0;
+    const verification = req.body.verification || null;
     const order = await Order.findOne({
       ...orderMatch(req.params.orderId),
       vendorId: req.vendor.id,
     });
     if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    const quoted =
+      Number(order.priceBreakdown?.quotedFinalPrice) ||
+      Number(order.priceBreakdown?.finalPrice) ||
+      0;
+
     order.vendorPriceAdjustment = amount;
+    if (!order.priceBreakdown) order.priceBreakdown = {};
+    if (order.priceBreakdown.quotedFinalPrice == null) {
+      order.priceBreakdown.quotedFinalPrice = quoted;
+    }
+
+    if (verification && typeof verification === 'object') {
+      const report = order.deviceReport && typeof order.deviceReport === 'object'
+        ? { ...order.deviceReport }
+        : {};
+      report.vendorVerification = {
+        ...verification,
+        quotedFinalPrice: quoted,
+        verifiedFinalPrice:
+          verification.verifiedFinalPrice != null
+            ? Number(verification.verifiedFinalPrice)
+            : quoted + amount,
+        adjustment: amount,
+        verifiedAt: new Date(),
+        verifiedByVendorId: String(req.vendor.id),
+      };
+      order.deviceReport = report;
+    }
+
     await order.save();
     res.json({
       vendorPriceAdjustment: order.vendorPriceAdjustment,
-      total:
-        Number(order.priceBreakdown?.finalPrice || 0) + Number(order.vendorPriceAdjustment || 0),
+      quotedFinalPrice: order.priceBreakdown.quotedFinalPrice,
+      total: Number(order.priceBreakdown.quotedFinalPrice || 0) + Number(order.vendorPriceAdjustment || 0),
+      deviceReport: order.deviceReport,
     });
   } catch (error) {
     next(error);
@@ -868,13 +897,17 @@ export const markDelivered = async (req, res, next) => {
     }
 
     const adj = Number(order.vendorPriceAdjustment) || 0;
-    if (adj) {
-      order.priceBreakdown = {
-        ...(order.priceBreakdown || {}),
-        vendorAdjustment: adj,
-        finalPrice: Number(order.priceBreakdown?.finalPrice || 0) + adj,
-      };
-    }
+    const quoted =
+      Number(order.priceBreakdown?.quotedFinalPrice) ||
+      Number(order.priceBreakdown?.finalPrice) ||
+      0;
+
+    order.priceBreakdown = {
+      ...(order.priceBreakdown || {}),
+      quotedFinalPrice: quoted,
+      vendorAdjustment: adj,
+      finalPrice: quoted + adj,
+    };
     order.status = 'completed';
     await order.save();
 
@@ -895,19 +928,6 @@ export const markDelivered = async (req, res, next) => {
     }
 
     res.json({ order: mapOrderCard(order), message: 'Pickup completed successfully' });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const listVendorCustomPricing = async (req, res, next) => {
-  try {
-    await ensureCustomPricingSeed();
-    const items = await CustomPricingItem.find({ isActive: true })
-      .sort({ sortOrder: 1 })
-      .select('key category label priceAdjustment')
-      .lean();
-    res.json({ items });
   } catch (error) {
     next(error);
   }

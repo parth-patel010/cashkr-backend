@@ -27,7 +27,6 @@ import {
   uploadPickupPhotos,
   setPriceAdjustment,
   markDelivered,
-  listVendorCustomPricing,
 } from '../controllers/vendor.controller.js';
 import vendorAuth from '../middleware/vendorAuth.js';
 import clientGate from '../middleware/clientGate.js';
@@ -44,7 +43,6 @@ router.use(vendorAuth);
 router.get('/me', getMe);
 router.patch('/me', updateMe);
 router.get('/home', getHome);
-router.get('/custom-pricing', listVendorCustomPricing);
 
 router.get('/orders/available', listAvailableOrders);
 router.get('/orders/progress', listProgressOrders);
