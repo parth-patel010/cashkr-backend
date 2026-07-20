@@ -4,6 +4,7 @@ import VendorGrievance from '../models/VendorGrievance.js';
 import VendorTrainingItem from '../models/VendorTrainingItem.js';
 import VendorLedgerEntry from '../models/VendorLedgerEntry.js';
 import Order from '../models/Order.js';
+import Device from '../models/Device.js';
 import CustomPricingItem from '../models/CustomPricingItem.js';
 import { ensureCustomPricingSeed } from './customPricing.controller.js';
 import mongoose from 'mongoose';
@@ -36,19 +37,24 @@ const publicVendor = (v) => ({
   orderCreditCost: v.orderCreditCost || 0,
 });
 
-const mapOrderCard = (o) => {
+const mapOrderCard = (o, imageUrl = '') => {
   const callLogs = Array.isArray(o.deviceReport?.callLogs) ? o.deviceReport.callLogs : [];
   const lastCallAt = o.deviceReport?.lastCallAt || (callLogs.length ? callLogs[callLogs.length - 1].at : null);
+  const ram = o.device?.ram || '';
+  const storage = o.device?.storage || '';
+  const capacity =
+    ram && storage ? `(${ram}/${storage})` : storage ? `(${storage})` : ram ? `(${ram})` : '';
   return {
     id: o._id,
     orderId: o.orderId,
     status: o.status,
-    deviceTitle: [o.device?.brand, o.device?.modelName, o.device?.storage ? `(${o.device.storage})` : '']
-      .filter(Boolean)
-      .join(' '),
+    deviceTitle: [o.device?.brand, o.device?.modelName, capacity].filter(Boolean).join(' '),
     brand: o.device?.brand,
     modelName: o.device?.modelName,
-    storage: o.device?.storage,
+    storage,
+    ram,
+    slug: o.device?.slug || '',
+    imageUrl: imageUrl || o.device?.imageUrl || '',
     price: o.priceBreakdown?.finalPrice || 0,
     incentive: o.vendorIncentive || 0,
     customerName: o.pickup?.name || '',
@@ -56,6 +62,7 @@ const mapOrderCard = (o) => {
     alternatePhone: o.pickup?.alternatePhone || '',
     address: o.pickup?.address || '',
     city: o.pickup?.city || '',
+    state: o.pickup?.state || '',
     pincode: o.pickup?.pincode || '',
     date: o.pickup?.date || '',
     timeSlot: o.pickup?.timeSlot || '',
@@ -68,6 +75,14 @@ const mapOrderCard = (o) => {
     callCount: callLogs.length,
     callLogs: callLogs.slice(-10),
   };
+};
+
+const attachImagesToOrders = async (orders) => {
+  const slugs = [...new Set(orders.map((o) => o.device?.slug).filter(Boolean))];
+  if (!slugs.length) return orders.map((o) => mapOrderCard(o));
+  const devices = await Device.find({ slug: { $in: slugs } }).select('slug imageUrl').lean();
+  const bySlug = Object.fromEntries(devices.map((d) => [d.slug, d.imageUrl || '']));
+  return orders.map((o) => mapOrderCard(o, bySlug[o.device?.slug] || ''));
 };
 
 const buildAvailableQuery = (vendor, pincodeFilter) => {
@@ -133,10 +148,12 @@ export const getHome = async (req, res, next) => {
         .lean(),
     ]);
 
+    const upcomingOrders = await attachImagesToOrders(upcomingRaw);
+
     res.json({
       vendor: publicVendor(req.vendor),
       metrics: { available, inProgress, completed, failed },
-      upcomingOrders: upcomingRaw.map(mapOrderCard),
+      upcomingOrders,
       announcements: [
         {
           id: '1',
@@ -159,9 +176,10 @@ export const listAvailableOrders = async (req, res, next) => {
     const vendorDoc = await Vendor.findById(req.vendor.id).select('credits orderCreditCost').lean();
     const creditsRequired = Number(vendorDoc?.orderCreditCost) || 0;
     const vendorCredits = Number(vendorDoc?.credits) || 0;
+    const cards = await attachImagesToOrders(orders);
     res.json({
-      orders: orders.map((o) => ({
-        ...mapOrderCard(o),
+      orders: cards.map((o) => ({
+        ...o,
         creditsRequired,
       })),
       creditsRequired,
@@ -286,7 +304,7 @@ export const listProgressOrders = async (req, res, next) => {
     })
       .sort({ assignedAt: -1 })
       .lean();
-    res.json({ orders: orders.map(mapOrderCard) });
+    res.json({ orders: await attachImagesToOrders(orders) });
   } catch (error) {
     next(error);
   }
@@ -308,7 +326,7 @@ export const listHistoryOrders = async (req, res, next) => {
 
     const orders = await Order.find(q).sort({ updatedAt: -1 }).limit(200).lean();
     res.json({
-      orders: orders.map(mapOrderCard),
+      orders: await attachImagesToOrders(orders),
       counts: {
         completed: await Order.countDocuments({ vendorId: req.vendor.id, status: 'completed' }),
         failed: await Order.countDocuments({ vendorId: req.vendor.id, status: 'failed' }),
@@ -358,13 +376,23 @@ export const getOrderDetail = async (req, res, next) => {
           date: order.pickup?.date,
           timeSlot: order.pickup?.timeSlot,
           city: order.pickup?.city,
+          state: order.pickup?.state,
           pincode: order.pickup?.pincode,
+          address: order.pickup?.address
+            ? String(order.pickup.address).split(',')[0]
+            : undefined,
         }
       : order.pickup;
 
+    let imageUrl = '';
+    if (order.device?.slug) {
+      const device = await Device.findOne({ slug: order.device.slug }).select('imageUrl').lean();
+      imageUrl = device?.imageUrl || '';
+    }
+
     res.json({
       order: {
-        ...mapOrderCard(order),
+        ...mapOrderCard(order, imageUrl),
         device: order.device,
         priceBreakdown: order.priceBreakdown,
         pickup: pickupPublic,
