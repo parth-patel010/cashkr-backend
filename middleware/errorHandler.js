@@ -2,6 +2,12 @@ const errorHandler = (err, req, res, next) => {
   console.error('Error:', err.message);
   console.error(err.stack);
 
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({
+      message: 'Upload too large. Compress photos and try again.',
+    });
+  }
+
   if (err.name === 'ValidationError') {
     const messages = Object.values(err.errors).map(e => e.message);
     return res.status(400).json({ message: 'Validation Error', errors: messages });

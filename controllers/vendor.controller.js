@@ -804,9 +804,10 @@ export const uploadPickupPhotos = async (req, res, next) => {
   try {
     const photos = Array.isArray(req.body.photos) ? req.body.photos : [];
     const angles = ['front', 'back', 'left', 'right', 'top', 'bottom'];
-    if (photos.length < 6) {
-      return res.status(400).json({ message: 'Upload all 6 angles' });
+    if (!photos.length) {
+      return res.status(400).json({ message: 'No photos provided' });
     }
+
     const order = await Order.findOne({
       ...orderMatch(req.params.orderId),
       vendorId: req.vendor.id,
@@ -816,16 +817,37 @@ export const uploadPickupPhotos = async (req, res, next) => {
       return res.status(400).json({ message: 'Verify pickup OTP first' });
     }
 
-    order.pickupPhotos = photos.slice(0, 6).map((p, i) => ({
-      angle: p.angle || angles[i],
-      url: p.url || '',
-      uploadedAt: new Date(),
-    }));
-    if (order.pickupPhotos.every((p) => p.url)) {
-      order.status = 'verified';
+    // Merge into existing photos so client can upload one angle at a time
+    const byAngle = {};
+    for (const p of order.pickupPhotos || []) {
+      if (p?.angle && p?.url) byAngle[p.angle] = p;
     }
+    for (const p of photos) {
+      const angle = String(p.angle || '').toLowerCase();
+      if (!angles.includes(angle) || !p.url) continue;
+      // Reject absurdly large payloads for a single image (~1.5MB base64)
+      if (String(p.url).length > 1_800_000) {
+        return res.status(413).json({
+          message: 'Photo too large. Retake with lower quality or restart the app.',
+        });
+      }
+      byAngle[angle] = {
+        angle,
+        url: p.url,
+        uploadedAt: new Date(),
+      };
+    }
+
+    order.pickupPhotos = angles.map((angle) => byAngle[angle] || { angle, url: '', uploadedAt: null });
+    const complete = order.pickupPhotos.every((p) => p.url);
+    if (complete) order.status = 'verified';
     await order.save();
-    res.json({ order: mapOrderCard(order), pickupPhotos: order.pickupPhotos });
+    res.json({
+      order: mapOrderCard(order),
+      pickupPhotos: order.pickupPhotos,
+      uploadedCount: order.pickupPhotos.filter((p) => p.url).length,
+      complete,
+    });
   } catch (error) {
     next(error);
   }
@@ -856,9 +878,16 @@ export const setPriceAdjustment = async (req, res, next) => {
       const report = order.deviceReport && typeof order.deviceReport === 'object'
         ? { ...order.deviceReport }
         : {};
+      const checklistAdj =
+        verification.checklistAdjustment != null
+          ? Number(verification.checklistAdjustment)
+          : amount - (Number(verification.negotiationAmount) || 0);
+      const negotiationAmount = Number(verification.negotiationAmount) || 0;
       report.vendorVerification = {
         ...verification,
         quotedFinalPrice: quoted,
+        checklistAdjustment: checklistAdj,
+        negotiationAmount,
         verifiedFinalPrice:
           verification.verifiedFinalPrice != null
             ? Number(verification.verifiedFinalPrice)
@@ -892,7 +921,11 @@ export const markDelivered = async (req, res, next) => {
     if (!order.pickupOtpVerifiedAt) {
       return res.status(400).json({ message: 'OTP not verified' });
     }
-    if (!order.pickupPhotos || order.pickupPhotos.length < 6) {
+    const photosOk =
+      Array.isArray(order.pickupPhotos) &&
+      order.pickupPhotos.length >= 6 &&
+      order.pickupPhotos.every((p) => p?.url);
+    if (!photosOk) {
       return res.status(400).json({ message: 'Upload 6 angle photos first' });
     }
 
