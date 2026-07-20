@@ -5,6 +5,7 @@ import VendorTrainingItem from '../models/VendorTrainingItem.js';
 import VendorLedgerEntry from '../models/VendorLedgerEntry.js';
 import Order from '../models/Order.js';
 import Device from '../models/Device.js';
+import Pincode from '../models/Pincode.js';
 import CustomPricingItem from '../models/CustomPricingItem.js';
 import { ensureCustomPricingSeed } from './customPricing.controller.js';
 import mongoose from 'mongoose';
@@ -85,29 +86,97 @@ const attachImagesToOrders = async (orders) => {
   return orders.map((o) => mapOrderCard(o, bySlug[o.device?.slug] || ''));
 };
 
-const buildAvailableQuery = (vendor, pincodeFilter) => {
-  const pincodes = (vendor.servicePincodes || []).map(String);
+const normalizePins = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((p) => String(p).replace(/\D/g, '')).filter(Boolean);
+  }
+  return String(value || '')
+    .split(',')
+    .map((p) => p.replace(/\D/g, ''))
+    .filter(Boolean);
+};
+
+const buildAvailableQuery = (vendor, appliedPincodes) => {
+  const assigned = (vendor.servicePincodes || []).map(String);
   const query = {
     vendorId: null,
     status: { $in: AVAILABLE },
   };
-  if (pincodeFilter) {
-    const pin = String(pincodeFilter).replace(/\D/g, '');
-    if (pin) {
-      if (pincodes.length && !pincodes.includes(pin)) {
-        query['pickup.pincode'] = '__none__';
-      } else {
-        query['pickup.pincode'] = pin;
-      }
-      return query;
-    }
+
+  const pins = Array.isArray(appliedPincodes) ? appliedPincodes.filter(Boolean) : [];
+  if (pins.length === 1) {
+    query['pickup.pincode'] = pins[0];
+    return query;
   }
-  if (pincodes.length) {
-    query['pickup.pincode'] = { $in: pincodes };
+  if (pins.length > 1) {
+    query['pickup.pincode'] = { $in: pins };
+    return query;
+  }
+
+  if (assigned.length) {
+    query['pickup.pincode'] = { $in: assigned };
   } else if (vendor.city) {
     query['pickup.city'] = new RegExp(`^${vendor.city}$`, 'i');
   }
   return query;
+};
+
+/** Resolve search/filter into applied pins + status for the Available screen. */
+const resolveAvailablePins = async (vendor, { pincode, pincodes }) => {
+  const assigned = (vendor.servicePincodes || []).map(String);
+  const searched = String(pincode || '').replace(/\D/g, '');
+  const multi = normalizePins(pincodes);
+
+  if (searched) {
+    const exists = await Pincode.findOne({
+      code: searched,
+      isActive: { $ne: false },
+    })
+      .select('code')
+      .lean();
+
+    if (!exists) {
+      return {
+        appliedPincodes: [],
+        pinStatus: 'not_found',
+        searchedPincode: searched,
+        servicePincodes: assigned,
+      };
+    }
+
+    if (assigned.length && !assigned.includes(searched)) {
+      return {
+        appliedPincodes: [],
+        pinStatus: 'not_assigned',
+        searchedPincode: searched,
+        servicePincodes: assigned,
+      };
+    }
+
+    return {
+      appliedPincodes: [searched],
+      pinStatus: 'ok',
+      searchedPincode: searched,
+      servicePincodes: assigned,
+    };
+  }
+
+  if (multi.length) {
+    const applied = assigned.length ? multi.filter((p) => assigned.includes(p)) : multi;
+    return {
+      appliedPincodes: applied,
+      pinStatus: applied.length ? 'ok' : 'not_assigned',
+      searchedPincode: null,
+      servicePincodes: assigned,
+    };
+  }
+
+  return {
+    appliedPincodes: assigned,
+    pinStatus: null,
+    searchedPincode: null,
+    servicePincodes: assigned,
+  };
 };
 
 export const getMe = async (req, res, next) => {
@@ -171,8 +240,17 @@ export const getHome = async (req, res, next) => {
 
 export const listAvailableOrders = async (req, res, next) => {
   try {
-    const query = buildAvailableQuery(req.vendor, req.query.pincode);
-    const orders = await Order.find(query).sort({ createdAt: -1 }).limit(100).lean();
+    const resolved = await resolveAvailablePins(req.vendor, {
+      pincode: req.query.pincode,
+      pincodes: req.query.pincodes,
+    });
+
+    let orders = [];
+    if (resolved.pinStatus !== 'not_found' && resolved.pinStatus !== 'not_assigned') {
+      const query = buildAvailableQuery(req.vendor, resolved.appliedPincodes);
+      orders = await Order.find(query).sort({ createdAt: -1 }).limit(100).lean();
+    }
+
     const vendorDoc = await Vendor.findById(req.vendor.id).select('credits orderCreditCost').lean();
     const creditsRequired = Number(vendorDoc?.orderCreditCost) || 0;
     const vendorCredits = Number(vendorDoc?.credits) || 0;
@@ -185,6 +263,10 @@ export const listAvailableOrders = async (req, res, next) => {
       creditsRequired,
       vendorCredits,
       creditRate: { rupeesPerCredit: 100 },
+      servicePincodes: resolved.servicePincodes,
+      appliedPincodes: resolved.appliedPincodes,
+      pinStatus: resolved.pinStatus,
+      searchedPincode: resolved.searchedPincode,
     });
   } catch (error) {
     next(error);
