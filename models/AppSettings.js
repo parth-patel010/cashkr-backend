@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { defaultWebsiteCategories } from '../config/websiteCategories.js';
 
 export const APP_PAGE_DEFS = [
   { key: 'sell', label: 'Sell', group: 'tabs' },
@@ -20,13 +21,22 @@ const pageSchema = new mongoose.Schema(
   {
     key: { type: String, required: true },
     label: { type: String, required: true },
-    /** Global on/off — off shows Coming Soon for everyone */
     enabled: { type: Boolean, default: true },
-    /**
-     * If true: users who already added an address can only see this page
-     * when their pincode is serviceable. Guests / no-address users can still browse.
-     */
     restrictByPincode: { type: Boolean, default: false },
+  },
+  { _id: false },
+);
+
+const categorySchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true },
+    label: { type: String, required: true },
+    sellPath: { type: String, default: '' },
+    buyPath: { type: String, default: '' },
+    enabledSell: { type: Boolean, default: true },
+    enabledBuy: { type: Boolean, default: true },
+    imageUrl: { type: String, default: '' },
+    sortOrder: { type: Number, default: 0 },
   },
   { _id: false },
 );
@@ -35,7 +45,7 @@ const appSettingsSchema = new mongoose.Schema(
   {
     key: { type: String, unique: true, default: 'default' },
     pages: { type: [pageSchema], default: [] },
-    /** Flows that always require a serviceable pickup/shipping address */
+    categories: { type: [categorySchema], default: [] },
     requireAddressFor: {
       type: [String],
       default: ['sell', 'buy', 'repair'],
@@ -52,6 +62,8 @@ export function defaultAppSettingsPages() {
     restrictByPincode: ['sell', 'buy', 'repair'].includes(p.key),
   }));
 }
+
+export { defaultWebsiteCategories };
 
 const AppSettings = mongoose.model('AppSettings', appSettingsSchema);
 export default AppSettings;

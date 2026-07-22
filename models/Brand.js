@@ -11,6 +11,7 @@ export const BRAND_CATEGORIES = [
   'mac',
   'camera',
   'gaming',
+  'refrigerator',
   'other',
 ];
 

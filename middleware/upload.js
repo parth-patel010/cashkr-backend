@@ -67,7 +67,7 @@ export function uploadedFileUrl(req, folderKey = 'products') {
 
 export const upload = multer({
   storage: diskStorageFor('products'),
-  limits: { fileSize: 3 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
     if (!file.mimetype?.startsWith('image/')) {
       cb(new Error('Only image uploads are allowed'));
@@ -79,7 +79,7 @@ export const upload = multer({
 
 export const uploadBrandImage = multer({
   storage: diskStorageFor('brands'),
-  limits: { fileSize: 3 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
     if (!file.mimetype?.startsWith('image/')) {
       cb(new Error('Only image uploads are allowed'));

@@ -218,7 +218,7 @@ export const uploadMediaVideo = async (req, res, next) => {
 export const uploadMediaImage = async (req, res, next) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'Image file is required (max 3MB)' });
+      return res.status(400).json({ message: 'Image file is required (max 10MB)' });
     }
 
     const imageUrl = uploadedFileUrl(req, 'products');

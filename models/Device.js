@@ -12,7 +12,7 @@ const variantSchema = new mongoose.Schema({
 const deviceSchema = new mongoose.Schema({
   category: {
     type: String,
-    enum: ['mobile', 'tablet', 'laptop', 'mac'],
+    enum: ['mobile', 'tablet', 'laptop', 'mac', 'tv', 'earbuds', 'refrigerator', 'smartwatch'],
     required: true,
     index: true,
   },

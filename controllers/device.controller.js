@@ -340,6 +340,10 @@ const CATEGORY_PATHS = {
   tablet: '/sell-tablet',
   laptop: '/sell-old-laptops',
   mac: '/sell-imac',
+  tv: '/sell/tv',
+  earbuds: '/sell/earbuds',
+  refrigerator: '/sell/refrigerator',
+  smartwatch: '/sell/smartwatch',
 };
 
 export const getSitemapUrls = async (req, res, next) => {
