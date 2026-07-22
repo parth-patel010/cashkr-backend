@@ -1,5 +1,7 @@
 import express from 'express';
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -54,6 +56,9 @@ app.use(cors({
 
 app.use(express.json({ limit: '25mb' }));
 app.use(cookieParser());
+
+// Local uploaded media (images/videos)
+app.use('/api/uploads', express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), 'uploads')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/devices', deviceRoutes);

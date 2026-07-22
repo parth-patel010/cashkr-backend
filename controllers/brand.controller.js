@@ -1,5 +1,5 @@
 import Brand, { BRAND_CATEGORIES, BRAND_OFFERS } from '../models/Brand.js';
-import { uploadBufferToCloudinary } from '../middleware/upload.js';
+import { uploadedFileUrl } from '../middleware/upload.js';
 
 const slugify = (name = '') =>
   String(name)
@@ -186,10 +186,10 @@ export const uploadBrandLogo = async (req, res, next) => {
       return res.status(400).json({ message: 'Image file is required' });
     }
 
-    const result = await uploadBufferToCloudinary(req.file.buffer);
+    const logoUrl = uploadedFileUrl(req, 'brands');
     res.status(201).json({
-      logoUrl: result.secure_url,
-      publicId: result.public_id,
+      logoUrl,
+      filename: req.file.filename,
     });
   } catch (error) {
     next(error);
@@ -205,14 +205,10 @@ export const uploadMediaVideo = async (req, res, next) => {
       return res.status(400).json({ message: 'Video must be 10MB or less' });
     }
 
-    const result = await uploadBufferToCloudinary(
-      req.file.buffer,
-      'devicekart/videos',
-      'video',
-    );
+    const videoUrl = uploadedFileUrl(req, 'videos');
     res.status(201).json({
-      videoUrl: result.secure_url,
-      publicId: result.public_id,
+      videoUrl,
+      filename: req.file.filename,
     });
   } catch (error) {
     next(error);
@@ -225,14 +221,10 @@ export const uploadMediaImage = async (req, res, next) => {
       return res.status(400).json({ message: 'Image file is required (max 3MB)' });
     }
 
-    const result = await uploadBufferToCloudinary(
-      req.file.buffer,
-      'devicekart/products',
-      'image',
-    );
+    const imageUrl = uploadedFileUrl(req, 'products');
     res.status(201).json({
-      imageUrl: result.secure_url,
-      publicId: result.public_id,
+      imageUrl,
+      filename: req.file.filename,
     });
   } catch (error) {
     next(error);

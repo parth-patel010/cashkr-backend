@@ -79,7 +79,7 @@ import {
   adminSendMessage,
   adminCloseConversation,
 } from '../controllers/chat.controller.js';
-import { upload, uploadVideo } from '../middleware/upload.js';
+import { upload, uploadBrandImage, uploadVideo, uploadBuyVideoMulter } from '../middleware/upload.js';
 
 const router = Router();
 
@@ -142,7 +142,7 @@ router.get('/brands/:id', getBrandById);
 router.post('/brands', createBrand);
 router.put('/brands/:id', updateBrand);
 router.delete('/brands/:id', deleteBrand);
-router.post('/brands/upload-logo', upload.single('logo'), uploadBrandLogo);
+router.post('/brands/upload-logo', uploadBrandImage.single('logo'), uploadBrandLogo);
 router.post('/media/upload-video', uploadVideo.single('video'), uploadMediaVideo);
 router.post('/media/upload-image', upload.single('image'), uploadMediaImage);
 
@@ -151,7 +151,7 @@ router.get('/buy-products', adminListBuyProducts);
 router.post('/buy-products', adminCreateBuyProduct);
 router.put('/buy-products/:id', adminUpdateBuyProduct);
 router.delete('/buy-products/:id', adminDeleteBuyProduct);
-router.post('/buy-products/upload-video', uploadVideo.single('video'), uploadBuyVideo);
+router.post('/buy-products/upload-video', uploadBuyVideoMulter.single('video'), uploadBuyVideo);
 
 // Repair services
 router.get('/repair-services', adminListRepairServices);

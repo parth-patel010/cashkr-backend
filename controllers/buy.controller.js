@@ -1,6 +1,6 @@
 import BuyProduct, { BUY_CONDITIONS, BUY_CONDITION_LABELS } from '../models/BuyProduct.js';
 import BuyOrder from '../models/BuyOrder.js';
-import { uploadBufferToCloudinary } from '../middleware/upload.js';
+import { uploadedFileUrl } from '../middleware/upload.js';
 
 const slugify = (value = '') =>
   String(value)
@@ -151,8 +151,8 @@ export const uploadBuyVideo = async (req, res, next) => {
     if (req.file.size > 10 * 1024 * 1024) {
       return res.status(400).json({ message: 'Video must be 10MB or less' });
     }
-    const result = await uploadBufferToCloudinary(req.file.buffer, 'devicekart/buy-videos', 'video');
-    res.status(201).json({ videoUrl: result.secure_url, publicId: result.public_id });
+    const videoUrl = uploadedFileUrl(req, 'buy-videos');
+    res.status(201).json({ videoUrl, filename: req.file.filename });
   } catch (error) {
     next(error);
   }
