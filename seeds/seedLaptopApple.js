@@ -33,9 +33,9 @@ const commonBodyDeductions = {
 };
 
 const ageMultipliers = {
-  lessThan3: 0.95, threeToEleven: 0.85, aboveEleven: 0.75,
-  lessThan1: 0.95, oneToTwo: 0.82, twoToThree: 0.72,
-  threeToFour: 0.68, fourToFive: 0.58, moreThan5: 0.48,
+  lessThan3: 0.96, threeToEleven: 0.86, aboveEleven: 0.76,
+  lessThan1: 0.96, oneToTwo: 0.84, twoToThree: 0.74,
+  threeToFour: 0.70, fourToFive: 0.60, moreThan5: 0.50,
 };
 
 const screenMultipliers = {
