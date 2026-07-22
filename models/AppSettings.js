@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { defaultWebsiteCategories } from '../config/websiteCategories.js';
+import { defaultHomeBanners } from '../config/homeBanners.js';
 
 export const APP_PAGE_DEFS = [
   { key: 'sell', label: 'Sell', group: 'tabs' },
@@ -41,11 +42,26 @@ const categorySchema = new mongoose.Schema(
   { _id: false },
 );
 
+const bannerSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true },
+    title: { type: String, default: '' },
+    subtitle: { type: String, default: '' },
+    ctaText: { type: String, default: 'Sell Now' },
+    ctaLink: { type: String, default: '/sell-old-mobile-phones/brand' },
+    imageUrl: { type: String, default: '' },
+    enabled: { type: Boolean, default: true },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
 const appSettingsSchema = new mongoose.Schema(
   {
     key: { type: String, unique: true, default: 'default' },
     pages: { type: [pageSchema], default: [] },
     categories: { type: [categorySchema], default: [] },
+    banners: { type: [bannerSchema], default: [] },
     requireAddressFor: {
       type: [String],
       default: ['sell', 'buy', 'repair'],
@@ -63,7 +79,7 @@ export function defaultAppSettingsPages() {
   }));
 }
 
-export { defaultWebsiteCategories };
+export { defaultWebsiteCategories, defaultHomeBanners };
 
 const AppSettings = mongoose.model('AppSettings', appSettingsSchema);
 export default AppSettings;
