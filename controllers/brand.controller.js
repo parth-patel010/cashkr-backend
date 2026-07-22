@@ -218,3 +218,23 @@ export const uploadMediaVideo = async (req, res, next) => {
     next(error);
   }
 };
+
+export const uploadMediaImage = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Image file is required (max 3MB)' });
+    }
+
+    const result = await uploadBufferToCloudinary(
+      req.file.buffer,
+      'devicekart/products',
+      'image',
+    );
+    res.status(201).json({
+      imageUrl: result.secure_url,
+      publicId: result.public_id,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

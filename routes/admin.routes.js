@@ -41,6 +41,7 @@ import {
   deleteBrand,
   uploadBrandLogo,
   uploadMediaVideo,
+  uploadMediaImage,
 } from '../controllers/brand.controller.js';
 import {
   adminListBuyProducts,
@@ -143,6 +144,7 @@ router.put('/brands/:id', updateBrand);
 router.delete('/brands/:id', deleteBrand);
 router.post('/brands/upload-logo', upload.single('logo'), uploadBrandLogo);
 router.post('/media/upload-video', uploadVideo.single('video'), uploadMediaVideo);
+router.post('/media/upload-image', upload.single('image'), uploadMediaImage);
 
 // Buy inventory (refurbished sell-to-customer)
 router.get('/buy-products', adminListBuyProducts);
