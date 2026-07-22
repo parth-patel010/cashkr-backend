@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   listRepairServicesPublic,
+  listRepairBrandsPublic,
   getRepairServiceBySlug,
   listRepairIssueCatalog,
   createRepairOrder,
@@ -15,6 +16,7 @@ const router = Router();
 router.use(clientGate);
 
 router.get('/issues-catalog', listRepairIssueCatalog);
+router.get('/brands', listRepairBrandsPublic);
 router.get('/services', listRepairServicesPublic);
 router.get('/services/:slug', getRepairServiceBySlug);
 

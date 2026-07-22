@@ -21,6 +21,8 @@ const repairOrderSchema = new mongoose.Schema(
     },
     snapshot: {
       brand: String,
+      modelName: String,
+      deviceSlug: String,
       title: String,
       category: String,
       imageUrl: String,

@@ -72,6 +72,11 @@ import {
   adminCreateRepairService,
   adminUpdateRepairService,
   adminDeleteRepairService,
+  adminListRepairTemplates,
+  adminCreateRepairTemplate,
+  adminUpdateRepairTemplate,
+  adminDeleteRepairTemplate,
+  adminApplyRepairTemplate,
 } from '../controllers/repair.controller.js';
 import {
   adminListConversations,
@@ -158,6 +163,12 @@ router.get('/repair-services', adminListRepairServices);
 router.post('/repair-services', adminCreateRepairService);
 router.put('/repair-services/:id', adminUpdateRepairService);
 router.delete('/repair-services/:id', adminDeleteRepairService);
+
+router.get('/repair-templates', adminListRepairTemplates);
+router.post('/repair-templates', adminCreateRepairTemplate);
+router.put('/repair-templates/:id', adminUpdateRepairTemplate);
+router.delete('/repair-templates/:id', adminDeleteRepairTemplate);
+router.post('/repair-templates/:id/apply', adminApplyRepairTemplate);
 
 // Live chat
 router.get('/chat/conversations', adminListConversations);

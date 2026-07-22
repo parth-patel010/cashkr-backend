@@ -35,6 +35,23 @@ const repairServiceSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    /** Model-wise pricing — links to Device catalog */
+    deviceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Device',
+      default: null,
+      index: true,
+    },
+    modelName: {
+      type: String,
+      default: '',
+      index: true,
+    },
+    deviceSlug: {
+      type: String,
+      default: '',
+      index: true,
+    },
     title: {
       type: String,
       default: '',
@@ -80,11 +97,21 @@ const repairServiceSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    /** Optional link to the template this was last applied from */
+    templateId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'RepairPriceTemplate',
+      default: null,
+    },
   },
   { timestamps: true },
 );
 
 repairServiceSchema.index({ category: 1, brand: 1, isActive: 1 });
+repairServiceSchema.index(
+  { deviceId: 1 },
+  { unique: true, partialFilterExpression: { deviceId: { $type: 'objectId' } } },
+);
 
 const RepairService = mongoose.model('RepairService', repairServiceSchema);
 export default RepairService;

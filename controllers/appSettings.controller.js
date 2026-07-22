@@ -165,16 +165,25 @@ export const adminUpdateAppSettings = async (req, res, next) => {
       doc.categories = WEBSITE_CATEGORY_DEFS.map((def) => {
         const cur = (doc.categories || []).find((c) => c.key === def.key) || {};
         const next = incomingCats.get(def.key) || {};
+        const enabledSell =
+          Object.prototype.hasOwnProperty.call(next, 'enabledSell')
+            ? Boolean(next.enabledSell)
+            : cur.enabledSell !== false;
+        const enabledBuy =
+          Object.prototype.hasOwnProperty.call(next, 'enabledBuy')
+            ? Boolean(next.enabledBuy)
+            : cur.enabledBuy !== false;
         return {
           key: def.key,
           label: next.label || cur.label || def.label,
           sellPath: next.sellPath || cur.sellPath || def.sellPath,
           buyPath: next.buyPath || cur.buyPath || def.buyPath,
-          enabledSell:
-            next.enabledSell != null ? Boolean(next.enabledSell) : cur.enabledSell !== false,
-          enabledBuy:
-            next.enabledBuy != null ? Boolean(next.enabledBuy) : cur.enabledBuy !== false,
-          imageUrl: next.imageUrl != null ? String(next.imageUrl) : cur.imageUrl || '',
+          enabledSell,
+          enabledBuy,
+          imageUrl:
+            Object.prototype.hasOwnProperty.call(next, 'imageUrl')
+              ? String(next.imageUrl || '')
+              : cur.imageUrl || '',
           sortOrder:
             next.sortOrder != null
               ? Number(next.sortOrder) || 0
@@ -183,6 +192,7 @@ export const adminUpdateAppSettings = async (req, res, next) => {
                 : def.sortOrder,
         };
       });
+      doc.markModified('categories');
     }
 
     if (Array.isArray(req.body.banners)) {
@@ -195,9 +205,12 @@ export const adminUpdateAppSettings = async (req, res, next) => {
           ctaText: String(b.ctaText || 'Sell Now'),
           ctaLink: String(b.ctaLink || '/'),
           imageUrl: String(b.imageUrl || ''),
-          enabled: b.enabled !== false,
+          enabled: Object.prototype.hasOwnProperty.call(b, 'enabled')
+            ? Boolean(b.enabled)
+            : true,
           sortOrder: b.sortOrder != null ? Number(b.sortOrder) || 0 : index + 1,
         }));
+      doc.markModified('banners');
     }
 
     await doc.save();
