@@ -60,6 +60,10 @@ const buyProductSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    descriptionImages: {
+      type: [String],
+      default: [],
+    },
     videoUrl: {
       type: String,
       default: '',
