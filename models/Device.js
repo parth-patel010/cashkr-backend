@@ -174,11 +174,18 @@ const deviceSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+
+  /** How many times users started the sell condition quiz for this device */
+  quizCount: {
+    type: Number,
+    default: 0,
+  },
 }, {
   timestamps: true,
 });
 
 deviceSchema.index({ brand: 1, category: 1 });
+deviceSchema.index({ isActive: 1, quizCount: -1 });
 
 const Device = mongoose.model('Device', deviceSchema);
 export default Device;

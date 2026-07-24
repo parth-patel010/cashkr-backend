@@ -346,6 +346,99 @@ const CATEGORY_PATHS = {
   smartwatch: '/sell/smartwatch',
 };
 
+const mapQuotedDevice = (d, quoteCount) => {
+  const variants = d.variants || [];
+  const prices = variants.map((v) => v.basePrice).filter((n) => typeof n === 'number');
+  return {
+    category: d.category,
+    brand: d.brand,
+    modelName: d.modelName,
+    slug: d.slug,
+    imageUrl: d.imageUrl || '',
+    maxPrice: prices.length ? Math.max(...prices) : 0,
+    quoteCount: quoteCount ?? d.quizCount ?? 0,
+    sellPath: `${CATEGORY_PATHS[d.category] || '/sell-old-mobile-phones'}/${String(d.brand || '').toLowerCase()}/${d.slug}`,
+  };
+};
+
+/** Rank devices by quiz starts; fall back to completed sell orders, then top price. */
+export const getMostQuoted = async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 24);
+    const category = req.query.category;
+
+    const filter = { isActive: true };
+    if (category && category !== 'all') filter.category = category;
+
+    const byQuiz = await Device.find(filter)
+      .sort({ quizCount: -1, 'variants.0.basePrice': -1 })
+      .limit(limit)
+      .lean();
+
+    const hasQuizData = byQuiz.some((d) => (d.quizCount || 0) > 0);
+    if (hasQuizData) {
+      return res.json(byQuiz.map((d) => mapQuotedDevice(d)));
+    }
+
+    // Cold start: use sell-order frequency as "quoted" proxy until quizzes accumulate
+    const Order = (await import('../models/Order.js')).default;
+    const orderMatch = {
+      status: { $nin: ['cancelled', 'failed'] },
+      'device.slug': { $exists: true, $ne: '' },
+    };
+    if (category && category !== 'all') orderMatch['device.category'] = category;
+
+    const popular = await Order.aggregate([
+      { $match: orderMatch },
+      { $group: { _id: '$device.slug', quoteCount: { $sum: 1 } } },
+      { $sort: { quoteCount: -1 } },
+      { $limit: limit },
+    ]);
+
+    if (popular.length) {
+      const slugs = popular.map((p) => p._id);
+      const countBySlug = Object.fromEntries(popular.map((p) => [p._id, p.quoteCount]));
+      const devices = await Device.find({ ...filter, slug: { $in: slugs } }).lean();
+      const bySlug = Object.fromEntries(devices.map((d) => [d.slug, d]));
+      const ordered = slugs.map((slug) => bySlug[slug]).filter(Boolean);
+      if (ordered.length) {
+        return res.json(ordered.map((d) => mapQuotedDevice(d, countBySlug[d.slug])));
+      }
+    }
+
+    // Final fallback: highest listed max price
+    const priced = await Device.find(filter).limit(limit * 3).lean();
+    const ranked = priced
+      .map((d) => mapQuotedDevice(d, 0))
+      .sort((a, b) => b.maxPrice - a.maxPrice)
+      .slice(0, limit);
+
+    res.json(ranked);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Increment quizCount when a user opens the condition quiz for a device. */
+export const recordQuiz = async (req, res, next) => {
+  try {
+    const { slug } = req.params;
+    const device = await Device.findOneAndUpdate(
+      { slug, isActive: true },
+      { $inc: { quizCount: 1 } },
+      { new: true, projection: { slug: 1, quizCount: 1 } },
+    );
+
+    if (!device) {
+      return res.status(404).json({ message: 'Device not found' });
+    }
+
+    res.json({ slug: device.slug, quizCount: device.quizCount });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getSitemapUrls = async (req, res, next) => {
   try {
     const devices = await Device.find({ isActive: true }, { brand: 1, slug: 1, category: 1 }).lean();
