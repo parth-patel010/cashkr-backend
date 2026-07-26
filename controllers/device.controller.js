@@ -301,35 +301,96 @@ export const searchDevices = async (req, res, next) => {
   try {
     const { q } = req.query;
 
-    if (!q || q.trim().length < 2) {
+    if (!q || String(q).trim().length < 2) {
       return res.json([]);
+    }
+
+    const raw = String(q).trim();
+    const normalized = raw
+      .toLowerCase()
+      .replace(/[_/-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const brandAliases = {
+      motorola: ['motorola', 'moto'],
+      moto: ['motorola', 'moto'],
+      apple: ['apple', 'iphone'],
+      iphone: ['apple', 'iphone'],
+      samsung: ['samsung', 'galaxy'],
+      xiaomi: ['xiaomi', 'redmi', 'poco', 'mi'],
+      google: ['google', 'pixel'],
+      oneplus: ['oneplus', 'one plus'],
+    };
+
+    const tokens = normalized
+      .split(' ')
+      .filter((t) => t.length >= 2 && !['the', 'and', 'for', 'with', 'gb', 'ram'].includes(t));
+
+    const expanded = new Set();
+    for (const t of tokens) {
+      expanded.add(t);
+      const aliases = brandAliases[t];
+      if (aliases) aliases.forEach((a) => expanded.add(a));
+    }
+
+    const orClauses = [
+      { modelName: { $regex: raw, $options: 'i' } },
+      { brand: { $regex: raw, $options: 'i' } },
+      { slug: { $regex: raw.replace(/\s+/g, '-'), $options: 'i' } },
+    ];
+
+    for (const t of expanded) {
+      orClauses.push({ modelName: { $regex: t, $options: 'i' } });
+      orClauses.push({ brand: { $regex: t, $options: 'i' } });
+      orClauses.push({ slug: { $regex: t, $options: 'i' } });
     }
 
     const devices = await Device.find(
       {
         isActive: true,
-        $or: [
-          { modelName: { $regex: q, $options: 'i' } },
-          { brand: { $regex: q, $options: 'i' } },
-        ],
+        $or: orClauses,
       },
-      { category: 1, brand: 1, modelName: 1, slug: 1, imageUrl: 1, variants: 1 }
+      { category: 1, brand: 1, modelName: 1, slug: 1, imageUrl: 1, variants: 1 },
     )
-      .limit(10)
-      .sort({ modelName: 1 });
+      .limit(40)
+      .sort({ modelName: 1 })
+      .lean();
 
-    const results = devices.map((d) => ({
-      category: d.category,
-      brand: d.brand,
-      modelName: d.modelName,
-      slug: d.slug,
-      imageUrl: d.imageUrl,
-      maxPrice: d.variants?.length
-        ? Math.max(...d.variants.map((v) => v.basePrice))
-        : 0,
-    }));
+    const scoreDevice = (d) => {
+      const hay = `${d.brand || ''} ${d.modelName || ''} ${d.slug || ''}`.toLowerCase();
+      let score = 0;
+      for (const t of expanded) {
+        if (hay.includes(t)) score += t.length >= 3 ? 3 : 1;
+      }
+      if (hay.includes(normalized)) score += 10;
+      return score;
+    };
 
-    res.json(results);
+    const ranked = devices
+      .map((d) => ({ d, score: scoreDevice(d) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || a.d.modelName.localeCompare(b.d.modelName))
+      .slice(0, 15)
+      .map(({ d }) => ({
+        category: d.category,
+        brand: d.brand,
+        modelName: d.modelName,
+        slug: d.slug,
+        imageUrl: d.imageUrl,
+        variants: Array.isArray(d.variants)
+          ? d.variants.map((v) => ({
+              storage: v.storage || '',
+              ram: v.ram || '',
+              basePrice: v.basePrice || 0,
+            }))
+          : [],
+        maxPrice: d.variants?.length
+          ? Math.max(...d.variants.map((v) => v.basePrice || 0))
+          : 0,
+      }));
+
+    res.json(ranked);
   } catch (error) {
     next(error);
   }

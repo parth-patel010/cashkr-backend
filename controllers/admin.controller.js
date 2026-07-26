@@ -11,26 +11,35 @@ import {
   notifyUserPushTokens,
   buildOrderStatusPushBody,
 } from '../utils/pushNotifications.js';
+import { createInboxNotifications } from '../utils/userInbox.js';
 import { creditReferralOnEligibleCompletion } from '../utils/referralCredit.js';
 
 const pushOrderStatusUpdate = async (userId, orderType, status, order) => {
   if (!userId) return;
   try {
     const user = await User.findById(userId).select('pushTokens').lean();
-    if (!user?.pushTokens?.length) return;
+    if (!user) return;
     const otp = order?.pickupOtpPlain || null;
     const body = buildOrderStatusPushBody(orderType, status, order, otp);
-    await notifyUserPushTokens(user, {
+    const data = {
+      type: 'order_status',
+      orderType,
+      orderId: order?.orderId || '',
+      status,
+      ...(otp ? { otp } : {}),
+    };
+    await createInboxNotifications([userId], {
       title: 'Order update',
       body,
-      data: {
-        type: 'order_status',
-        orderType,
-        orderId: order?.orderId || '',
-        status,
-        ...(otp ? { otp } : {}),
-      },
+      data,
     });
+    if (user.pushTokens?.length) {
+      await notifyUserPushTokens(user, {
+        title: 'Order update',
+        body,
+        data,
+      });
+    }
   } catch (err) {
     console.error('Push notification failed:', err.message);
   }

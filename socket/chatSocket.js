@@ -15,7 +15,7 @@ export function initChatSocket(httpServer, app) {
           callback(null, true);
           return;
         }
-        callback(new Error('Not allowed by CORS'));
+        callback(null, false);
       },
       credentials: true,
     },
@@ -54,17 +54,17 @@ export function initChatSocket(httpServer, app) {
     if (socket.data.role === 'admin') {
       socket.join('admins');
     } else if (socket.data.userId) {
-      socket.join(`user:${socket.data.userId}`);
+      socket.join(`user:${String(socket.data.userId)}`);
     }
 
     socket.on('chat:join', (conversationId) => {
       if (!conversationId) return;
-      socket.join(`conversation:${conversationId}`);
+      socket.join(`conversation:${String(conversationId)}`);
     });
 
     socket.on('chat:leave', (conversationId) => {
       if (!conversationId) return;
-      socket.leave(`conversation:${conversationId}`);
+      socket.leave(`conversation:${String(conversationId)}`);
     });
   });
 

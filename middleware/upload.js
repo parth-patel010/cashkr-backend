@@ -65,6 +65,19 @@ export function uploadedFileUrl(req, folderKey = 'products') {
   return publicUploadUrl(folderKey, req.file.filename);
 }
 
+/** Absolute HTTPS URL for clients that cannot resolve relative paths (Expo, RN). */
+export function absoluteUploadedFileUrl(req, folderKey = 'products') {
+  const relative = uploadedFileUrl(req, folderKey);
+  if (!relative) return '';
+  const origin =
+    process.env.PUBLIC_SITE_URL ||
+    process.env.SITE_URL ||
+    `${req.protocol}://${req.get('host')}`.replace(/\/api$/i, '') ||
+    'https://devicekart.in';
+  const base = String(origin).replace(/\/+$/, '').replace(/\/api$/i, '');
+  return relative.startsWith('http') ? relative : `${base}${relative}`;
+}
+
 export const upload = multer({
   storage: diskStorageFor('products'),
   limits: { fileSize: 10 * 1024 * 1024 },

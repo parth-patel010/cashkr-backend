@@ -14,23 +14,33 @@ import {
   notifyUserPushTokens,
   buildOrderStatusPushBody,
 } from '../utils/pushNotifications.js';
+import { createInboxNotifications } from '../utils/userInbox.js';
 
 const pushSellOrderUpdate = async (order, status, otp = null) => {
   if (!order?.userId) return;
   try {
     const user = await User.findById(order.userId).select('pushTokens').lean();
-    if (!user?.pushTokens?.length) return;
-    await notifyUserPushTokens(user, {
+    if (!user) return;
+    const body = buildOrderStatusPushBody('sell', status, order, otp);
+    const data = {
+      type: 'order_status',
+      orderType: 'sell',
+      orderId: order?.orderId || '',
+      status,
+      ...(otp ? { otp: String(otp) } : {}),
+    };
+    await createInboxNotifications([order.userId], {
       title: 'Order update',
-      body: buildOrderStatusPushBody('sell', status, order, otp),
-      data: {
-        type: 'order_status',
-        orderType: 'sell',
-        orderId: order?.orderId || '',
-        status,
-        ...(otp ? { otp: String(otp) } : {}),
-      },
+      body,
+      data,
     });
+    if (user.pushTokens?.length) {
+      await notifyUserPushTokens(user, {
+        title: 'Order update',
+        body,
+        data,
+      });
+    }
   } catch (err) {
     console.error('Vendor sell push failed:', err.message);
   }

@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import Order from '../models/Order.js';
+import UserNotification from '../models/UserNotification.js';
 import { validationResult } from 'express-validator';
 import { maskPaymentMethods } from '../utils/maskPayment.js';
 import { ensureAppSettings } from './appSettings.controller.js';
@@ -166,6 +167,9 @@ export const savePushToken = async (req, res, next) => {
     if (!token) {
       return res.status(400).json({ message: 'Push token is required' });
     }
+    if (!token.startsWith('ExponentPushToken[')) {
+      return res.status(400).json({ message: 'Invalid Expo push token' });
+    }
 
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -173,12 +177,62 @@ export const savePushToken = async (req, res, next) => {
     }
 
     if (!user.pushTokens) user.pushTokens = [];
-    if (!user.pushTokens.includes(token)) {
-      user.pushTokens.push(token);
-      await user.save();
-    }
+    // Keep latest token first; drop duplicates
+    user.pushTokens = [token, ...user.pushTokens.filter((t) => t !== token)].slice(0, 5);
+    await user.save();
 
-    res.json({ message: 'Push token saved' });
+    res.json({ message: 'Push token saved', tokenTail: token.slice(-12) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listMyNotifications = async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const items = await UserNotification.find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+    res.json({ notifications: items });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMyUnreadNotificationCount = async (req, res, next) => {
+  try {
+    const count = await UserNotification.countDocuments({
+      userId: req.user.id,
+      readAt: null,
+    });
+    res.json({ count });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const markNotificationRead = async (req, res, next) => {
+  try {
+    const item = await UserNotification.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      { $set: { readAt: new Date() } },
+      { new: true },
+    ).lean();
+    if (!item) return res.status(404).json({ message: 'Notification not found' });
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const markAllNotificationsRead = async (req, res, next) => {
+  try {
+    const result = await UserNotification.updateMany(
+      { userId: req.user.id, readAt: null },
+      { $set: { readAt: new Date() } },
+    );
+    res.json({ updated: result.modifiedCount || 0 });
   } catch (error) {
     next(error);
   }

@@ -4,12 +4,48 @@ import User from '../models/User.js';
 
 const getIo = (req) => req.app.get('io');
 
+const roomIds = (conversation) => {
+  const conversationId = String(conversation?._id || '');
+  const userId = conversation?.userId != null ? String(conversation.userId) : '';
+  return { conversationId, userId };
+};
+
+const emitChatMessage = (io, conversation, message) => {
+  if (!io || !conversation) return;
+  const { conversationId, userId } = roomIds(conversation);
+  const payload = {
+    conversation:
+      typeof conversation.toObject === 'function' ? conversation.toObject() : conversation,
+    message: typeof message.toObject === 'function' ? message.toObject() : message,
+  };
+  if (conversationId) {
+    io.to(`conversation:${conversationId}`).emit('chat:message', payload);
+  }
+  if (userId) {
+    io.to(`user:${userId}`).emit('chat:message', payload);
+  }
+  io.to('admins').emit('chat:message', payload);
+  io.to('admins').emit('chat:conversation', payload.conversation);
+};
+
+const findActiveConversation = async (userId) => {
+  let conversation = await Conversation.findOne({ userId, status: 'open' }).sort({
+    lastMessageAt: -1,
+  });
+  if (!conversation) {
+    conversation = await Conversation.findOne({ userId }).sort({ lastMessageAt: -1 });
+  }
+  return conversation;
+};
+
 export const getOrCreateMyConversation = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id).select('name phone').lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    let conversation = await Conversation.findOne({ userId: req.user.id });
+    let conversation = await Conversation.findOne({ userId: req.user.id, status: 'open' }).sort({
+      lastMessageAt: -1,
+    });
     if (!conversation) {
       conversation = await Conversation.create({
         userId: req.user.id,
@@ -18,7 +54,6 @@ export const getOrCreateMyConversation = async (req, res, next) => {
         status: 'open',
       });
     } else {
-      // keep snapshot fresh
       conversation.userName = user.name || conversation.userName;
       conversation.userPhone = user.phone || conversation.userPhone;
       await conversation.save();
@@ -30,9 +65,43 @@ export const getOrCreateMyConversation = async (req, res, next) => {
   }
 };
 
+export const startNewConversation = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id).select('name phone').lean();
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    await Conversation.updateMany(
+      { userId: req.user.id, status: 'open' },
+      { $set: { status: 'closed' } },
+    );
+
+    const conversation = await Conversation.create({
+      userId: req.user.id,
+      userName: user.name || 'User',
+      userPhone: user.phone || '',
+      status: 'open',
+      lastMessage: '',
+      lastSenderType: '',
+      lastMessageAt: new Date(),
+      unreadByAdmin: 0,
+      unreadByUser: 0,
+    });
+
+    const io = getIo(req);
+    if (io) {
+      io.to('admins').emit('chat:conversation', conversation.toObject());
+      io.to(`user:${req.user.id}`).emit('chat:conversation', conversation.toObject());
+    }
+
+    res.status(201).json(conversation);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getMyMessages = async (req, res, next) => {
   try {
-    const conversation = await Conversation.findOne({ userId: req.user.id });
+    const conversation = await findActiveConversation(req.user.id);
     if (!conversation) return res.json({ conversation: null, messages: [] });
 
     const messages = await ChatMessage.find({ conversationId: conversation._id })
@@ -40,7 +109,6 @@ export const getMyMessages = async (req, res, next) => {
       .limit(200)
       .lean();
 
-    // Mark admin messages as read for user
     if (conversation.unreadByUser > 0) {
       conversation.unreadByUser = 0;
       await conversation.save();
@@ -60,12 +128,13 @@ export const sendUserMessage = async (req, res, next) => {
     const user = await User.findById(req.user.id).select('name phone').lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    let conversation = await Conversation.findOne({ userId: req.user.id });
-    if (!conversation) {
+    let conversation = await findActiveConversation(req.user.id);
+    if (!conversation || conversation.status === 'closed') {
       conversation = await Conversation.create({
         userId: req.user.id,
         userName: user.name || 'User',
         userPhone: user.phone || '',
+        status: 'open',
       });
     }
 
@@ -90,12 +159,7 @@ export const sendUserMessage = async (req, res, next) => {
       message: message.toObject(),
     };
 
-    const io = getIo(req);
-    if (io) {
-      io.to('admins').emit('chat:message', payload);
-      io.to(`conversation:${conversation._id}`).emit('chat:message', payload);
-      io.to('admins').emit('chat:conversation', conversation.toObject());
-    }
+    emitChatMessage(getIo(req), conversation, message);
 
     res.status(201).json(payload);
   } catch (error) {
@@ -172,12 +236,7 @@ export const adminSendMessage = async (req, res, next) => {
       message: message.toObject(),
     };
 
-    const io = getIo(req);
-    if (io) {
-      io.to(`user:${conversation.userId}`).emit('chat:message', payload);
-      io.to(`conversation:${conversation._id}`).emit('chat:message', payload);
-      io.to('admins').emit('chat:conversation', conversation.toObject());
-    }
+    emitChatMessage(getIo(req), conversation, message);
 
     res.status(201).json(payload);
   } catch (error) {

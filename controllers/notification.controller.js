@@ -1,6 +1,8 @@
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import { sendExpoPush } from '../utils/pushNotifications.js';
+import { absolutizeMediaUrl } from '../utils/mediaUrl.js';
+import { createInboxNotifications } from '../utils/userInbox.js';
 import mongoose from 'mongoose';
 
 export const adminListNotifications = async (req, res, next) => {
@@ -20,7 +22,8 @@ export const adminSendNotification = async (req, res, next) => {
   try {
     const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
     const body = typeof req.body.body === 'string' ? req.body.body.trim() : '';
-    const imageUrl = typeof req.body.imageUrl === 'string' ? req.body.imageUrl.trim() : '';
+    const imageUrlRaw = typeof req.body.imageUrl === 'string' ? req.body.imageUrl.trim() : '';
+    const imageUrl = absolutizeMediaUrl(imageUrlRaw);
     const target = ['all', 'pincode', 'user'].includes(req.body.target)
       ? req.body.target
       : 'all';
@@ -41,24 +44,24 @@ export const adminSendNotification = async (req, res, next) => {
 
     let users = [];
     if (target === 'all') {
-      users = await User.find({ pushTokens: { $exists: true, $ne: [] } })
-        .select('pushTokens')
-        .lean();
+      users = await User.find({}).select('_id pushTokens').lean();
     } else if (target === 'pincode') {
-      users = await User.find({
-        pushTokens: { $exists: true, $ne: [] },
-        'addresses.pincode': pincode,
-      })
-        .select('pushTokens')
-        .lean();
+      users = await User.find({ 'addresses.pincode': pincode }).select('_id pushTokens').lean();
     } else if (target === 'user') {
       if (!mongoose.Types.ObjectId.isValid(userId)) {
         return res.status(400).json({ message: 'Invalid userId' });
       }
-      const user = await User.findById(userId).select('pushTokens').lean();
+      const user = await User.findById(userId).select('_id pushTokens').lean();
       if (!user) return res.status(404).json({ message: 'User not found' });
       users = [user];
     }
+
+    const data = { type: 'admin_broadcast', target, ...(imageUrl ? { imageUrl } : {}) };
+
+    await createInboxNotifications(
+      users.map((u) => u._id),
+      { title, body, imageUrl, data },
+    );
 
     const tokens = [
       ...new Set(
@@ -75,8 +78,12 @@ export const adminSendNotification = async (req, res, next) => {
       sound: 'default',
       title,
       body,
-      data: { type: 'admin_broadcast', target },
-      ...(imageUrl ? { richContent: { image: imageUrl } } : {}),
+      data,
+      priority: 'high',
+      channelId: 'general-notifications',
+      ttl: 3600,
+      _contentAvailable: true,
+      ...(imageUrl ? { richContent: { image: imageUrl }, mutableContent: true } : {}),
     }));
 
     const result = await sendExpoPush(messages);
@@ -90,7 +97,11 @@ export const adminSendNotification = async (req, res, next) => {
       userId: target === 'user' ? userId : null,
       sentCount: result.sent,
       failedCount: result.failed,
-      meta: { tokenCount: tokens.length },
+      meta: {
+        tokenCount: tokens.length,
+        inboxUsers: users.length,
+        errors: result.errors || [],
+      },
     });
 
     res.status(201).json({
@@ -98,6 +109,8 @@ export const adminSendNotification = async (req, res, next) => {
       sent: result.sent,
       failed: result.failed,
       tokenCount: tokens.length,
+      inboxUsers: users.length,
+      errors: result.errors || [],
     });
   } catch (error) {
     next(error);

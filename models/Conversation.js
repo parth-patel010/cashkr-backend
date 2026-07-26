@@ -6,7 +6,6 @@ const conversationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      unique: true,
       index: true,
     },
     userName: {
@@ -50,6 +49,7 @@ const conversationSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+conversationSchema.index({ userId: 1, status: 1, lastMessageAt: -1 });
 conversationSchema.index({ lastMessageAt: -1 });
 
 const Conversation = mongoose.model('Conversation', conversationSchema);

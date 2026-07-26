@@ -16,6 +16,10 @@ import {
   addPaymentMethod,
   updatePaymentMethod,
   deletePaymentMethod,
+  listMyNotifications,
+  getMyUnreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
 } from '../controllers/user.controller.js';
 import auth from '../middleware/auth.js';
 import clientGate from '../middleware/clientGate.js';
@@ -40,6 +44,11 @@ router.post(
   savePushToken,
 );
 router.get('/me/earnings', getEarnings);
+
+router.get('/me/notifications', listMyNotifications);
+router.get('/me/notifications/unread-count', getMyUnreadNotificationCount);
+router.patch('/me/notifications/:id/read', markNotificationRead);
+router.post('/me/notifications/read-all', markAllNotificationsRead);
 
 router.get('/me/addresses', getAddresses);
 router.post(
