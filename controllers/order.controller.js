@@ -1,7 +1,14 @@
 import Order from '../models/Order.js';
+import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 
 const DUPLICATE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+
+const toObjectId = (id) => {
+  if (id instanceof mongoose.Types.ObjectId) return id;
+  if (mongoose.Types.ObjectId.isValid(id)) return new mongoose.Types.ObjectId(id);
+  return id;
+};
 
 const normalizeList = (value) => {
   if (!Array.isArray(value)) return [];
@@ -45,7 +52,7 @@ export const createOrder = async (req, res, next) => {
     }
 
     const { device, priceBreakdown, pickup } = req.body;
-    const userId = req.user.id;
+    const userId = toObjectId(req.user.id);
     const since = new Date(Date.now() - DUPLICATE_WINDOW_MS);
     const incomingKey = buildOrderSpecKey(device, priceBreakdown);
 

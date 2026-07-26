@@ -31,6 +31,19 @@ const offerSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  redirectPage: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  allowedPincodes: {
+    type: [String],
+    default: [],
+  },
+  loginOnly: {
+    type: Boolean,
+    default: true,
+  },
   startsAt: {
     type: Date,
     default: Date.now,

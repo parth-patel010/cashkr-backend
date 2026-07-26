@@ -12,6 +12,8 @@ import connectDB from './config/db.js';
 import { getAllowedOrigins, isAllowedOrigin } from './config/origins.js';
 import errorHandler from './middleware/errorHandler.js';
 import { initChatSocket } from './socket/chatSocket.js';
+import { globalLimiter } from './middleware/rateLimits.js';
+import { logSecurityEvent } from './utils/logSecurityEvent.js';
 
 import authRoutes from './routes/auth.routes.js';
 import deviceRoutes from './routes/device.routes.js';
@@ -27,12 +29,15 @@ import repairRoutes from './routes/repair.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import vendorRoutes from './routes/vendor.routes.js';
 import appSettingsRoutes from './routes/appSettings.routes.js';
+import categoryQuizRoutes from './routes/categoryQuiz.routes.js';
 
 const app = express();
 const server = http.createServer(app);
 
 connectDB();
 initChatSocket(server, app);
+
+app.set('trust proxy', 1);
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -49,15 +54,22 @@ app.use(cors({
       callback(null, true);
       return;
     }
-    callback(new Error('Not allowed by CORS'));
+    logSecurityEvent({
+      type: 'cors_blocked',
+      ip: '',
+      path: '',
+      meta: { origin },
+    }).catch(() => {});
+    callback(null, false);
   },
   credentials: true,
 }));
 
-app.use(express.json({ limit: '25mb' }));
+app.use(globalLimiter);
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
-// Local uploaded media (images/videos)
+// Local uploaded media (images/videos) — upload routes keep their own multer limits
 app.use('/api/uploads', express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), 'uploads')));
 
 app.use('/api/auth', authRoutes);
@@ -74,6 +86,7 @@ app.use('/api/repair', repairRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/vendor', vendorRoutes);
 app.use('/api/app-settings', appSettingsRoutes);
+app.use('/api/category-quizzes', categoryQuizRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({

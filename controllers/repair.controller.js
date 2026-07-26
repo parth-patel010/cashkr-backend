@@ -2,6 +2,13 @@ import RepairService, { DEFAULT_REPAIR_ISSUES } from '../models/RepairService.js
 import RepairPriceTemplate from '../models/RepairPriceTemplate.js';
 import RepairOrder from '../models/RepairOrder.js';
 import Device from '../models/Device.js';
+import mongoose from 'mongoose';
+
+const toObjectId = (id) => {
+  if (id instanceof mongoose.Types.ObjectId) return id;
+  if (mongoose.Types.ObjectId.isValid(id)) return new mongoose.Types.ObjectId(id);
+  return id;
+};
 
 const slugify = (value = '') =>
   String(value)
@@ -418,7 +425,7 @@ export const createRepairOrder = async (req, res, next) => {
     }
 
     const order = await RepairOrder.create({
-      userId: req.user.id,
+      userId: toObjectId(req.user.id),
       serviceId: service._id,
       snapshot: {
         brand: service.brand,

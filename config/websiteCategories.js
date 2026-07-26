@@ -80,6 +80,16 @@ export const WEBSITE_CATEGORY_DEFS = [
     imageUrl: '',
     sortOrder: 8,
   },
+  {
+    key: 'gaming',
+    label: 'Gaming',
+    sellPath: '/sell/gaming/brand',
+    buyPath: '/buy/gaming/brand',
+    enabledSell: false,
+    enabledBuy: true,
+    imageUrl: '',
+    sortOrder: 9,
+  },
 ];
 
 export function defaultWebsiteCategories() {

@@ -3,13 +3,14 @@ import { body } from 'express-validator';
 import { createOrder, getUserOrders, getOrderById, cancelOrder, rescheduleOrder, updateOrderPaymentMethod, getPickupOtp } from '../controllers/order.controller.js';
 import auth from '../middleware/auth.js';
 import clientGate from '../middleware/clientGate.js';
+import { orderCreateLimiter } from '../middleware/rateLimits.js';
 
 const router = Router();
 
 router.use(clientGate);
 router.use(auth);
 
-router.post('/', [
+router.post('/', orderCreateLimiter, [
   body('device').isObject().withMessage('Device info is required'),
   body('priceBreakdown').isObject().withMessage('Price breakdown is required'),
   body('pickup').isObject().withMessage('Pickup details are required'),

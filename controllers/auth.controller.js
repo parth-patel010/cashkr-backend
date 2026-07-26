@@ -226,6 +226,11 @@ export const verifyOtp = async (req, res, next) => {
 
     applyQuizContext(user, quizContext);
 
+    const appKey = req.headers['x-devicekart-app-key'];
+    const configuredKey = process.env.MOBILE_APP_API_KEY;
+    const isAppLogin = Boolean(configuredKey && appKey && appKey === configuredKey);
+    user.loginFrom = isAppLogin ? 'App' : 'Website';
+
     const needsName = !user.name || user.name.trim() === 'User' || user.name.trim().length < 2;
 
     const accessToken = signAccessToken(user._id);

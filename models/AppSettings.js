@@ -62,6 +62,9 @@ const appSettingsSchema = new mongoose.Schema(
     pages: { type: [pageSchema], default: [] },
     categories: { type: [categorySchema], default: [] },
     banners: { type: [bannerSchema], default: [] },
+    sellBanners: { type: [bannerSchema], default: [] },
+    repairBanners: { type: [bannerSchema], default: [] },
+    referralBonusAmount: { type: Number, default: 100 },
     requireAddressFor: {
       type: [String],
       default: ['sell', 'buy', 'repair'],

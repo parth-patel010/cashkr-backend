@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
 import adminAuth from '../middleware/adminAuth.js';
+import { adminLoginLimiter } from '../middleware/rateLimits.js';
 import {
   adminLogin,
   getDashboardStats,
@@ -66,6 +67,18 @@ import {
   adminGetAppSettings,
   adminUpdateAppSettings,
 } from '../controllers/appSettings.controller.js';
+import {
+  adminListCategoryQuizzes,
+  adminGetCategoryQuiz,
+  adminCreateCategoryQuiz,
+  adminUpdateCategoryQuiz,
+  adminDeleteCategoryQuiz,
+} from '../controllers/categoryQuiz.controller.js';
+import {
+  adminListNotifications,
+  adminSendNotification,
+} from '../controllers/notification.controller.js';
+import { adminSecurityAudit } from '../controllers/security.controller.js';
 
 import {
   adminListRepairServices,
@@ -89,7 +102,7 @@ import { upload, uploadBrandImage, uploadVideo, uploadBuyVideoMulter } from '../
 const router = Router();
 
 // Public admin login
-router.post('/login', adminLogin);
+router.post('/login', adminLoginLimiter, adminLogin);
 
 // All routes below require admin auth
 router.use(adminAuth);
@@ -192,5 +205,23 @@ router.delete('/vendor-training/:id', adminDeleteTraining);
 
 router.get('/app-settings', adminGetAppSettings);
 router.put('/app-settings', adminUpdateAppSettings);
+
+// Category quizzes
+router.get('/category-quizzes', adminListCategoryQuizzes);
+router.get('/category-quizzes/:id', adminGetCategoryQuiz);
+router.post(
+  '/category-quizzes',
+  [body('category').trim().notEmpty().withMessage('Category is required')],
+  adminCreateCategoryQuiz,
+);
+router.put('/category-quizzes/:id', adminUpdateCategoryQuiz);
+router.delete('/category-quizzes/:id', adminDeleteCategoryQuiz);
+
+// Notifications
+router.get('/notifications', adminListNotifications);
+router.post('/notifications/send', adminSendNotification);
+
+// Security audit
+router.get('/security-audit', adminSecurityAudit);
 
 export default router;

@@ -6,8 +6,35 @@ import VendorLedgerEntry from '../models/VendorLedgerEntry.js';
 import Order from '../models/Order.js';
 import Device from '../models/Device.js';
 import Pincode from '../models/Pincode.js';
+import User from '../models/User.js';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import { creditReferralOnEligibleCompletion } from '../utils/referralCredit.js';
+import {
+  notifyUserPushTokens,
+  buildOrderStatusPushBody,
+} from '../utils/pushNotifications.js';
+
+const pushSellOrderUpdate = async (order, status, otp = null) => {
+  if (!order?.userId) return;
+  try {
+    const user = await User.findById(order.userId).select('pushTokens').lean();
+    if (!user?.pushTokens?.length) return;
+    await notifyUserPushTokens(user, {
+      title: 'Order update',
+      body: buildOrderStatusPushBody('sell', status, order, otp),
+      data: {
+        type: 'order_status',
+        orderType: 'sell',
+        orderId: order?.orderId || '',
+        status,
+        ...(otp ? { otp: String(otp) } : {}),
+      },
+    });
+  } catch (err) {
+    console.error('Vendor sell push failed:', err.message);
+  }
+};
 
 const orderMatch = (orderId) => {
   if (mongoose.Types.ObjectId.isValid(orderId)) {
@@ -531,6 +558,12 @@ export const updateOrderStatus = async (req, res, next) => {
     }
 
     await order.save();
+    if (status) {
+      await pushSellOrderUpdate(order, status, order.pickupOtpPlain || null);
+    }
+    if (status === 'completed') {
+      await creditReferralOnEligibleCompletion(order.userId);
+    }
     res.json({ order: mapOrderCard(order) });
   } catch (error) {
     next(error);
@@ -765,6 +798,8 @@ export const markReached = async (req, res, next) => {
     order.pickupOtpVerifiedAt = null;
     await order.save();
 
+    await pushSellOrderUpdate(order, order.status || 'assigned', otp);
+
     res.json({ message: 'Reached. Ask customer for the OTP shown on their app or website.' });
   } catch (error) {
     next(error);
@@ -794,6 +829,7 @@ export const verifyPickupOtp = async (req, res, next) => {
     order.pickupOtpPlain = '';
     order.status = 'picked';
     await order.save();
+    await pushSellOrderUpdate(order, 'picked');
     res.json({ message: 'OTP verified', order: mapOrderCard(order) });
   } catch (error) {
     next(error);
@@ -842,6 +878,9 @@ export const uploadPickupPhotos = async (req, res, next) => {
     const complete = order.pickupPhotos.every((p) => p.url);
     if (complete) order.status = 'verified';
     await order.save();
+    if (complete) {
+      await pushSellOrderUpdate(order, 'verified');
+    }
     res.json({
       order: mapOrderCard(order),
       pickupPhotos: order.pickupPhotos,
@@ -959,6 +998,9 @@ export const markDelivered = async (req, res, next) => {
         serviceNumber: order.orderId,
       });
     }
+
+    await pushSellOrderUpdate(order, 'completed');
+    await creditReferralOnEligibleCompletion(order.userId);
 
     res.json({ order: mapOrderCard(order), message: 'Pickup completed successfully' });
   } catch (error) {

@@ -36,11 +36,25 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  loginFrom: {
+    type: String,
+    enum: ['App', 'Website'],
+    default: 'Website',
+  },
+  pushTokens: {
+    type: [String],
+    default: [],
+  },
+  /** Set when this user's first eligible sell/buy completes — credits the referrer once. */
+  referralBonusCreditedAt: {
+    type: Date,
+    default: null,
+  },
   addresses: [{
-    label: { type: String, default: 'Home' }, // Home, Office, etc.
+    label: { type: String, default: 'Home' },
     name: String,
     phone: String,
-    alternatePhone: String, // optional contact for pickup
+    alternatePhone: String,
     pincode: String,
     address: String,
     landmark: String,
@@ -69,7 +83,6 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
-
 
 const User = mongoose.model('User', userSchema);
 export default User;

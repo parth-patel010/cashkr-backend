@@ -1,6 +1,13 @@
 import BuyProduct, { BUY_CONDITIONS, BUY_CONDITION_LABELS } from '../models/BuyProduct.js';
 import BuyOrder from '../models/BuyOrder.js';
 import { uploadedFileUrl } from '../middleware/upload.js';
+import mongoose from 'mongoose';
+
+const toObjectId = (id) => {
+  if (id instanceof mongoose.Types.ObjectId) return id;
+  if (mongoose.Types.ObjectId.isValid(id)) return new mongoose.Types.ObjectId(id);
+  return id;
+};
 
 const slugify = (value = '') =>
   String(value)
@@ -182,7 +189,7 @@ export const createBuyOrder = async (req, res, next) => {
     await product.save();
 
     const order = await BuyOrder.create({
-      userId: req.user.id,
+      userId: toObjectId(req.user.id),
       productId: product._id,
       productSnapshot: {
         brand: product.brand,

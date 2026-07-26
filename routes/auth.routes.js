@@ -4,10 +4,12 @@ import { refresh, logout, sendOtp, verifyOtp } from '../controllers/auth.control
 import auth from '../middleware/auth.js';
 import clientGate from '../middleware/clientGate.js';
 import { otpSendLimiter, otpVerifyLimiter } from '../middleware/otpLimiter.js';
+import { authLimiter } from '../middleware/rateLimits.js';
 
 const router = Router();
 
 router.use(clientGate);
+router.use(authLimiter);
 
 router.post('/send-otp', otpSendLimiter, [
   body('phone').trim().notEmpty().withMessage('Phone is required'),

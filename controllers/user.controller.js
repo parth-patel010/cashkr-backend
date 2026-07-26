@@ -2,13 +2,25 @@ import User from '../models/User.js';
 import Order from '../models/Order.js';
 import { validationResult } from 'express-validator';
 import { maskPaymentMethods } from '../utils/maskPayment.js';
+import { ensureAppSettings } from './appSettings.controller.js';
 
-const REFERRAL_BONUS = 500;
+const DEFAULT_REFERRAL_BONUS = 100;
+
+const getReferralBonusAmount = async () => {
+  try {
+    const settings = await ensureAppSettings();
+    const amount = Number(settings?.referralBonusAmount);
+    return Number.isFinite(amount) && amount >= 0 ? amount : DEFAULT_REFERRAL_BONUS;
+  } catch {
+    return DEFAULT_REFERRAL_BONUS;
+  }
+};
 
 const serializeUser = (user) => {
   const obj = typeof user.toObject === 'function' ? user.toObject() : { ...user };
   delete obj.passwordHash;
   delete obj.refreshToken;
+  delete obj.pushTokens;
   obj.paymentMethods = maskPaymentMethods(obj.paymentMethods || []);
   return obj;
 };
@@ -92,16 +104,81 @@ export const getReferrals = async (req, res, next) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    const referralBonus = await getReferralBonusAmount();
     const referredUsers = await User.find({ referredBy: user.referralCode })
-      .select('name createdAt')
+      .select('name createdAt referralBonusCreditedAt')
       .sort({ createdAt: -1 });
+
+    const creditedCount = referredUsers.filter((u) => u.referralBonusCreditedAt).length;
 
     res.json({
       referralCode: user.referralCode,
+      referralBonusAmount: referralBonus,
       totalReferrals: referredUsers.length,
-      totalEarnings: referredUsers.length * REFERRAL_BONUS,
+      totalEarnings: creditedCount * referralBonus,
       referrals: referredUsers,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const applyReferral = async (req, res, next) => {
+  try {
+    const code = typeof req.body.code === 'string' ? req.body.code.trim().toUpperCase() : '';
+    if (!code) {
+      return res.status(400).json({ message: 'Referral code is required' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.referredBy) {
+      return res.status(400).json({ message: 'Referral code already applied' });
+    }
+
+    if (user.referralCode && user.referralCode.toUpperCase() === code) {
+      return res.status(400).json({ message: 'You cannot use your own referral code' });
+    }
+
+    const referrer = await User.findOne({ referralCode: code }).select('_id referralCode');
+    if (!referrer) {
+      return res.status(404).json({ message: 'Invalid referral code' });
+    }
+
+    user.referredBy = referrer.referralCode;
+    await user.save();
+
+    res.json({
+      message: 'Referral code applied',
+      referredBy: user.referredBy,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const savePushToken = async (req, res, next) => {
+  try {
+    const token = typeof req.body.token === 'string' ? req.body.token.trim() : '';
+    if (!token) {
+      return res.status(400).json({ message: 'Push token is required' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.pushTokens) user.pushTokens = [];
+    if (!user.pushTokens.includes(token)) {
+      user.pushTokens.push(token);
+      await user.save();
+    }
+
+    res.json({ message: 'Push token saved' });
   } catch (error) {
     next(error);
   }
@@ -121,8 +198,9 @@ export const getEarnings = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .lean();
 
+    const referralBonus = await getReferralBonusAmount();
     const referredUsers = await User.find({ referredBy: user.referralCode })
-      .select('name createdAt')
+      .select('name createdAt referralBonusCreditedAt')
       .lean();
 
     const sellLedger = completedOrders.map((order) => ({
@@ -134,28 +212,34 @@ export const getEarnings = async (req, res, next) => {
       createdAt: order.createdAt,
     }));
 
-    const referralLedger = referredUsers.map((ref) => ({
-      id: `REF-${ref._id}`,
-      type: 'referral_bonus',
-      title: `Referral: ${ref.name || 'User'}`,
-      amount: REFERRAL_BONUS,
-      status: 'pending',
-      createdAt: ref.createdAt,
-    }));
+    const referralLedger = referredUsers.map((ref) => {
+      const credited = Boolean(ref.referralBonusCreditedAt);
+      return {
+        id: `REF-${ref._id}`,
+        type: 'referral_bonus',
+        title: `Referral: ${ref.name || 'User'}`,
+        amount: referralBonus,
+        status: credited ? 'completed' : 'pending',
+        createdAt: credited ? ref.referralBonusCreditedAt : ref.createdAt,
+      };
+    });
 
     const ledger = [...sellLedger, ...referralLedger].sort(
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
     );
 
     const sellTotal = sellLedger.reduce((sum, row) => sum + row.amount, 0);
-    const referralTotal = referralLedger.reduce((sum, row) => sum + row.amount, 0);
+    const referralCompleted = referralLedger.filter((r) => r.status === 'completed');
+    const referralPending = referralLedger.filter((r) => r.status === 'pending');
+    const referralEarned = referralCompleted.reduce((sum, row) => sum + row.amount, 0);
+    const referralPendingTotal = referralPending.reduce((sum, row) => sum + row.amount, 0);
 
     res.json({
       summary: {
         sellPayouts: sellTotal,
-        referralEarnings: referralTotal,
-        total: sellTotal + referralTotal,
-        pendingReferrals: referralTotal,
+        referralEarnings: referralEarned,
+        total: sellTotal + referralEarned,
+        pendingReferrals: referralPendingTotal,
       },
       ledger,
     });

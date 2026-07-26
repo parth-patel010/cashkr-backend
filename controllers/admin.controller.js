@@ -7,6 +7,34 @@ import RepairOrder from '../models/RepairOrder.js';
 import PartnerApplication from '../models/PartnerApplication.js';
 import Pincode from '../models/Pincode.js';
 import MetaSpend from '../models/MetaSpend.js';
+import {
+  notifyUserPushTokens,
+  buildOrderStatusPushBody,
+} from '../utils/pushNotifications.js';
+import { creditReferralOnEligibleCompletion } from '../utils/referralCredit.js';
+
+const pushOrderStatusUpdate = async (userId, orderType, status, order) => {
+  if (!userId) return;
+  try {
+    const user = await User.findById(userId).select('pushTokens').lean();
+    if (!user?.pushTokens?.length) return;
+    const otp = order?.pickupOtpPlain || null;
+    const body = buildOrderStatusPushBody(orderType, status, order, otp);
+    await notifyUserPushTokens(user, {
+      title: 'Order update',
+      body,
+      data: {
+        type: 'order_status',
+        orderType,
+        orderId: order?.orderId || '',
+        status,
+        ...(otp ? { otp } : {}),
+      },
+    });
+  } catch (err) {
+    console.error('Push notification failed:', err.message);
+  }
+};
 
 const buildCreatedAtFilter = (fromDate, toDate) => {
   if (!fromDate && !toDate) return {};
@@ -433,6 +461,11 @@ export const updateOrderStatus = async (req, res, next) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
+    await pushOrderStatusUpdate(order.userId, 'sell', status, order);
+    if (status === 'completed') {
+      await creditReferralOnEligibleCompletion(order.userId);
+    }
+
     res.json(order);
   } catch (error) {
     next(error);
@@ -486,6 +519,12 @@ export const updateBuyOrderStatus = async (req, res, next) => {
 
     const order = await BuyOrder.findByIdAndUpdate(req.params.id, { status }, { new: true });
     if (!order) return res.status(404).json({ message: 'Buy order not found' });
+
+    await pushOrderStatusUpdate(order.userId, 'buy', status, order);
+    if (status === 'delivered') {
+      await creditReferralOnEligibleCompletion(order.userId);
+    }
+
     res.json(order);
   } catch (error) {
     next(error);
@@ -539,6 +578,9 @@ export const updateRepairOrderStatus = async (req, res, next) => {
 
     const order = await RepairOrder.findByIdAndUpdate(req.params.id, { status }, { new: true });
     if (!order) return res.status(404).json({ message: 'Repair order not found' });
+
+    await pushOrderStatusUpdate(order.userId, 'repair', status, order);
+
     res.json(order);
   } catch (error) {
     next(error);

@@ -5,6 +5,8 @@ import {
   updateMe,
   deleteMe,
   getReferrals,
+  applyReferral,
+  savePushToken,
   getEarnings,
   getAddresses,
   addAddress,
@@ -27,6 +29,16 @@ router.get('/me', getMe);
 router.patch('/me', updateMe);
 router.delete('/me', deleteMe);
 router.get('/referrals', getReferrals);
+router.post(
+  '/me/referral',
+  [body('code').trim().notEmpty().withMessage('Referral code is required')],
+  applyReferral,
+);
+router.post(
+  '/me/push-token',
+  [body('token').trim().notEmpty().withMessage('Push token is required')],
+  savePushToken,
+);
 router.get('/me/earnings', getEarnings);
 
 router.get('/me/addresses', getAddresses);
