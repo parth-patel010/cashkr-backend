@@ -69,6 +69,54 @@ export const getBuyProductBySlug = async (req, res, next) => {
   }
 };
 
+export const searchBuyProductsPublic = async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json([]);
+
+    const tokens = q
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length >= 2)
+      .slice(0, 8);
+
+    const or = [
+      { modelName: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+      { brand: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+      { title: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+      { slug: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+    ];
+    for (const t of tokens) {
+      const re = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      or.push({ modelName: re }, { brand: re }, { title: re });
+    }
+
+    const products = await BuyProduct.find({ isActive: true, $or: or })
+      .sort({ sortOrder: 1, createdAt: -1 })
+      .limit(40)
+      .lean();
+
+    const mapped = products
+      .map(withPricedConditions)
+      .filter((p) => p.conditions.length > 0)
+      .slice(0, 20)
+      .map((p) => ({
+        category: p.category || 'mobile',
+        brand: p.brand,
+        modelName: p.modelName || p.title,
+        slug: p.slug,
+        imageUrl: p.imageUrl || '',
+        maxPrice: p.maxPrice || 0,
+        minPrice: p.minPrice || 0,
+        mode: 'buy',
+      }));
+
+    res.json(mapped);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const adminListBuyProducts = async (req, res, next) => {
   try {
     const { category, brand, search } = req.query;

@@ -132,6 +132,7 @@ const orderSchema = new mongoose.Schema({
     default: [],
   },
   vendorPriceAdjustment: { type: Number, default: 0 },
+  completedAt: { type: Date, default: null },
 }, {
   timestamps: true,
 });

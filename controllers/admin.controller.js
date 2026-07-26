@@ -28,16 +28,20 @@ const pushOrderStatusUpdate = async (userId, orderType, status, order) => {
       status,
       ...(otp ? { otp } : {}),
     };
-    await createInboxNotifications([userId], {
+    const inbox = await createInboxNotifications([userId], {
       title: 'Order update',
       body,
       data,
     });
+    const notificationId = inbox.items?.[0]?._id;
     if (user.pushTokens?.length) {
       await notifyUserPushTokens(user, {
         title: 'Order update',
         body,
-        data,
+        data: {
+          ...data,
+          ...(notificationId ? { notificationId } : {}),
+        },
       });
     }
   } catch (err) {
@@ -460,15 +464,16 @@ export const updateOrderStatus = async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid status' });
     }
 
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
-
+    const order = await Order.findById(req.params.id);
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
+
+    order.status = status;
+    if (status === 'completed' && !order.completedAt) {
+      order.completedAt = new Date();
+    }
+    await order.save();
 
     await pushOrderStatusUpdate(order.userId, 'sell', status, order);
     if (status === 'completed') {

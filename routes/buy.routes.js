@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   listBuyProductsPublic,
   getBuyProductBySlug,
+  searchBuyProductsPublic,
   createBuyOrder,
   listMyBuyOrders,
   getBuyOrderById,
@@ -14,6 +15,7 @@ const router = Router();
 
 router.use(clientGate);
 
+router.get('/products/search', searchBuyProductsPublic);
 router.get('/products', listBuyProductsPublic);
 router.get('/products/:slug', getBuyProductBySlug);
 

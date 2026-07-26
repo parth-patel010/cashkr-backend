@@ -128,6 +128,60 @@ export const getRepairServiceBySlug = async (req, res, next) => {
   }
 };
 
+export const searchRepairServicesPublic = async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json([]);
+
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tokens = q
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length >= 2)
+      .slice(0, 8);
+
+    const or = [
+      { modelName: new RegExp(escaped, 'i') },
+      { brand: new RegExp(escaped, 'i') },
+      { title: new RegExp(escaped, 'i') },
+      { slug: new RegExp(escaped, 'i') },
+      { deviceSlug: new RegExp(escaped, 'i') },
+    ];
+    for (const t of tokens) {
+      const re = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      or.push({ modelName: re }, { brand: re }, { title: re });
+    }
+
+    const services = await RepairService.find({
+      isActive: true,
+      deviceSlug: { $exists: true, $ne: '' },
+      $or: or,
+    })
+      .sort({ brand: 1, modelName: 1 })
+      .limit(40)
+      .lean();
+
+    res.json(
+      services
+        .map(enrichService)
+        .slice(0, 20)
+        .map((s) => ({
+          category: s.category || 'mobile',
+          brand: s.brand,
+          modelName: s.modelName || s.title || s.slug,
+          slug: s.deviceSlug || s.slug,
+          serviceSlug: s.slug,
+          imageUrl: s.imageUrl || '',
+          maxPrice: s.maxPrice || 0,
+          minPrice: s.minPrice || 0,
+          mode: 'repair',
+        })),
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const listRepairIssueCatalog = async (_req, res, next) => {
   try {
     res.json({ issues: DEFAULT_REPAIR_ISSUES });

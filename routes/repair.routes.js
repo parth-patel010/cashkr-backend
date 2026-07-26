@@ -3,6 +3,7 @@ import {
   listRepairServicesPublic,
   listRepairBrandsPublic,
   getRepairServiceBySlug,
+  searchRepairServicesPublic,
   listRepairIssueCatalog,
   createRepairOrder,
   listMyRepairOrders,
@@ -18,6 +19,7 @@ router.use(clientGate);
 
 router.get('/issues-catalog', listRepairIssueCatalog);
 router.get('/brands', listRepairBrandsPublic);
+router.get('/services/search', searchRepairServicesPublic);
 router.get('/services', listRepairServicesPublic);
 router.get('/services/:slug', getRepairServiceBySlug);
 

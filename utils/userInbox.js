@@ -3,10 +3,11 @@ import { absolutizeMediaUrl } from './mediaUrl.js';
 
 /**
  * Fan-out inbox rows for targeted users. Always stores absolute image URLs.
+ * Returns { created, items: [{ userId, _id }] }
  */
 export async function createInboxNotifications(userIds, { title, body, imageUrl, data } = {}) {
   const ids = [...new Set((userIds || []).map((id) => String(id)).filter(Boolean))];
-  if (!ids.length || !title || !body) return { created: 0 };
+  if (!ids.length || !title || !body) return { created: 0, items: [] };
 
   const absoluteImage = absolutizeMediaUrl(imageUrl) || '';
   const docs = ids.map((userId) => ({
@@ -20,9 +21,15 @@ export async function createInboxNotifications(userIds, { title, body, imageUrl,
 
   try {
     const result = await UserNotification.insertMany(docs, { ordered: false });
-    return { created: result.length };
+    return {
+      created: result.length,
+      items: result.map((doc) => ({
+        userId: String(doc.userId),
+        _id: String(doc._id),
+      })),
+    };
   } catch (err) {
     console.error('createInboxNotifications failed:', err.message);
-    return { created: 0, error: err.message };
+    return { created: 0, items: [], error: err.message };
   }
 }

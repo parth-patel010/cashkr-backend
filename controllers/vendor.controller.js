@@ -29,16 +29,20 @@ const pushSellOrderUpdate = async (order, status, otp = null) => {
       status,
       ...(otp ? { otp: String(otp) } : {}),
     };
-    await createInboxNotifications([order.userId], {
+    const inbox = await createInboxNotifications([order.userId], {
       title: 'Order update',
       body,
       data,
     });
+    const notificationId = inbox.items?.[0]?._id;
     if (user.pushTokens?.length) {
       await notifyUserPushTokens(user, {
         title: 'Order update',
         body,
-        data,
+        data: {
+          ...data,
+          ...(notificationId ? { notificationId } : {}),
+        },
       });
     }
   } catch (err) {
@@ -546,6 +550,9 @@ export const updateOrderStatus = async (req, res, next) => {
     }
 
     if (status) order.status = status;
+    if (status === 'completed' && !order.completedAt) {
+      order.completedAt = new Date();
+    }
     if (failedReason !== undefined) order.failedReason = failedReason;
     if (toBeFailed !== undefined) order.toBeFailed = Boolean(toBeFailed);
     if (imei1 !== undefined) order.imei1 = imei1;
@@ -991,6 +998,7 @@ export const markDelivered = async (req, res, next) => {
       finalPrice: quoted + adj,
     };
     order.status = 'completed';
+    if (!order.completedAt) order.completedAt = new Date();
     await order.save();
 
     if (order.vendorIncentive > 0) {
