@@ -30,6 +30,7 @@ import chatRoutes from './routes/chat.routes.js';
 import vendorRoutes from './routes/vendor.routes.js';
 import appSettingsRoutes from './routes/appSettings.routes.js';
 import categoryQuizRoutes from './routes/categoryQuiz.routes.js';
+import { razorpayWebhook } from './controllers/razorpayWebhook.controller.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -66,6 +67,14 @@ app.use(cors({
 }));
 
 app.use(globalLimiter);
+
+// Razorpay webhook needs the raw body for signature verification
+app.post(
+  '/api/webhooks/razorpay',
+  express.raw({ type: 'application/json' }),
+  razorpayWebhook,
+);
+
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 

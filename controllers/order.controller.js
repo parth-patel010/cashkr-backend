@@ -172,6 +172,7 @@ export const getPickupOtp = async (req, res, next) => {
 export const cancelOrder = async (req, res, next) => {
   try {
     const { orderId } = req.params;
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
 
     const order = await Order.findOne({ orderId });
 
@@ -188,6 +189,9 @@ export const cancelOrder = async (req, res, next) => {
     }
 
     order.status = 'cancelled';
+    order.cancelReason = reason;
+    order.cancelledAt = new Date();
+    order.cancelledBy = 'customer';
     await order.save();
 
     res.json({ message: 'Order cancelled successfully', orderId: order.orderId });
@@ -200,6 +204,7 @@ export const rescheduleOrder = async (req, res, next) => {
   try {
     const { orderId } = req.params;
     const { date, timeSlot } = req.body;
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
 
     const order = await Order.findOne({ orderId });
 
@@ -213,7 +218,10 @@ export const rescheduleOrder = async (req, res, next) => {
 
     order.pickup.date = date;
     order.pickup.timeSlot = timeSlot;
-    order.status = 'scheduled'; // Reset status to scheduled if it was something else (optional)
+    order.status = 'scheduled';
+    if (reason) order.rescheduleReason = reason;
+    order.rescheduledAt = new Date();
+    order.rescheduledBy = 'customer';
     await order.save();
 
     res.json({ message: 'Order rescheduled successfully', orderId: order.orderId });

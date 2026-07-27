@@ -458,7 +458,7 @@ export const exportOrders = async (req, res, next) => {
 export const updateOrderStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['placed', 'scheduled', 'assigned', 'picked', 'verified', 'payment_initiated', 'completed', 'cancelled'];
+    const validStatuses = ['placed', 'scheduled', 'assigned', 'picked', 'verified', 'payment_initiated', 'completed', 'cancelled', 'failed'];
 
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });
@@ -472,6 +472,10 @@ export const updateOrderStatus = async (req, res, next) => {
     order.status = status;
     if (status === 'completed' && !order.completedAt) {
       order.completedAt = new Date();
+    }
+    if (status === 'cancelled' && !order.cancelledAt) {
+      order.cancelledAt = new Date();
+      if (!order.cancelledBy) order.cancelledBy = 'admin';
     }
     await order.save();
 

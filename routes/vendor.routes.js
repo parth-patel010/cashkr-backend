@@ -11,6 +11,8 @@ import {
   listHistoryOrders,
   getOrderDetail,
   updateOrderStatus,
+  vendorCancelOrder,
+  vendorRescheduleOrder,
   upsertDeviceReport,
   listAgents,
   createAgent,
@@ -21,6 +23,8 @@ import {
   getWallet,
   listLedger,
   addMoneyIntent,
+  createWalletTopupOrder,
+  verifyWalletTopup,
   listCallLogs,
   markReached,
   verifyPickupOtp,
@@ -57,6 +61,8 @@ router.post('/orders/:orderId/pickup-photos', uploadPickupPhotos);
 router.patch('/orders/:orderId/price-adjustment', setPriceAdjustment);
 router.post('/orders/:orderId/delivered', markDelivered);
 router.patch('/orders/:orderId/status', updateOrderStatus);
+router.post('/orders/:orderId/cancel', vendorCancelOrder);
+router.post('/orders/:orderId/reschedule', vendorRescheduleOrder);
 router.put('/orders/:orderId/device-report', upsertDeviceReport);
 
 router.get('/agents', listAgents);
@@ -71,5 +77,7 @@ router.get('/training', listTraining);
 router.get('/wallet', getWallet);
 router.get('/ledger', listLedger);
 router.post('/wallet/add-money', addMoneyIntent);
+router.post('/wallet/topup/create-order', createWalletTopupOrder);
+router.post('/wallet/topup/verify', verifyWalletTopup);
 
 export default router;

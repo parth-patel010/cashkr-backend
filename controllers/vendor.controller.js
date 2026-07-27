@@ -15,6 +15,8 @@ import {
   buildOrderStatusPushBody,
 } from '../utils/pushNotifications.js';
 import { createInboxNotifications } from '../utils/userInbox.js';
+import { getRazorpay, getRazorpayKeyId, verifyPaymentSignature } from '../utils/razorpay.js';
+import { creditVendorTopup } from '../utils/vendorTopup.js';
 
 const pushSellOrderUpdate = async (order, status, otp = null) => {
   if (!order?.userId) return;
@@ -109,6 +111,12 @@ const mapOrderCard = (o, imageUrl = '') => {
     assignedAt: o.assignedAt,
     failedReason: o.failedReason,
     toBeFailed: o.toBeFailed,
+    cancelReason: o.cancelReason || '',
+    cancelledAt: o.cancelledAt || null,
+    cancelledBy: o.cancelledBy || '',
+    rescheduleReason: o.rescheduleReason || '',
+    rescheduledAt: o.rescheduledAt || null,
+    rescheduledBy: o.rescheduledBy || '',
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
     lastCallAt,
@@ -587,6 +595,87 @@ export const updateOrderStatus = async (req, res, next) => {
   }
 };
 
+const VENDOR_ACTION_REASONS = [
+  'Customer not available',
+  'Customer not satisfied with price',
+];
+
+const VENDOR_TIME_SLOTS = ['10am-12pm', '12pm-2pm', '2pm-4pm', '4pm-6pm', '6pm-8pm'];
+
+export const vendorCancelOrder = async (req, res, next) => {
+  try {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (!VENDOR_ACTION_REASONS.includes(reason)) {
+      return res.status(400).json({ message: 'Invalid cancel reason' });
+    }
+
+    const order = await Order.findOne({
+      ...orderMatch(req.params.orderId),
+      vendorId: req.vendor.id,
+    });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (TERMINAL.includes(order.status)) {
+      return res.status(400).json({ message: 'Order is already closed' });
+    }
+
+    order.status = 'cancelled';
+    order.cancelReason = reason;
+    order.cancelledAt = new Date();
+    order.cancelledBy = 'vendor';
+    order.toBeFailed = false;
+    await order.save();
+    await pushSellOrderUpdate(order, 'cancelled');
+    res.json({ message: 'Order cancelled', order: mapOrderCard(order) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const vendorRescheduleOrder = async (req, res, next) => {
+  try {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    const date = typeof req.body?.date === 'string' ? req.body.date.trim() : '';
+    const timeSlot = typeof req.body?.timeSlot === 'string' ? req.body.timeSlot.trim() : '';
+
+    if (!VENDOR_ACTION_REASONS.includes(reason)) {
+      return res.status(400).json({ message: 'Invalid reschedule reason' });
+    }
+    if (!date) {
+      return res.status(400).json({ message: 'Pickup date is required' });
+    }
+    if (!VENDOR_TIME_SLOTS.includes(timeSlot)) {
+      return res.status(400).json({ message: 'Invalid time slot' });
+    }
+
+    const order = await Order.findOne({
+      ...orderMatch(req.params.orderId),
+      vendorId: req.vendor.id,
+    });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (TERMINAL.includes(order.status)) {
+      return res.status(400).json({ message: 'Order is already closed' });
+    }
+
+    order.pickup.date = date;
+    order.pickup.timeSlot = timeSlot;
+    order.rescheduleReason = reason;
+    order.rescheduledAt = new Date();
+    order.rescheduledBy = 'vendor';
+    order.status = 'assigned';
+    order.toBeFailed = false;
+    order.reachedAt = null;
+    order.pickupOtpHash = '';
+    order.pickupOtpPlain = '';
+    order.pickupOtpExpiresAt = null;
+    order.pickupOtpVerifiedAt = null;
+    await order.save();
+    await pushSellOrderUpdate(order, 'assigned');
+    res.json({ message: 'Order rescheduled', order: mapOrderCard(order) });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const upsertDeviceReport = async (req, res, next) => {
   try {
     const order = await Order.findOne({
@@ -727,7 +816,13 @@ export const listLedger = async (req, res, next) => {
   }
 };
 
-export const addMoneyIntent = async (req, res, next) => {
+export const addMoneyIntent = async (req, res) => {
+  return res.status(410).json({
+    message: 'Use /wallet/topup/create-order for Razorpay add money',
+  });
+};
+
+export const createWalletTopupOrder = async (req, res, next) => {
   try {
     const amount = Number(req.body.amount);
     const accountType = req.body.accountType === 'commission' ? 'commission' : 'wallet';
@@ -739,27 +834,92 @@ export const addMoneyIntent = async (req, res, next) => {
       return res.status(400).json({ message: 'Minimum ₹100 required (1 credit = ₹100)' });
     }
 
-    const vendor = await Vendor.findById(req.vendor.id);
-    vendor.credits = Number(vendor.credits || 0) + credits;
-    vendor.walletBalance = Number(vendor.walletBalance || 0) + amount;
-    await vendor.save();
+    const keyId = getRazorpayKeyId();
+    if (!keyId || !process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(503).json({ message: 'Payment gateway is not configured' });
+    }
 
-    const entry = await VendorLedgerEntry.create({
+    const razorpay = getRazorpay();
+    const rzOrder = await razorpay.orders.create({
+      amount: Math.round(amount * 100),
+      currency: 'INR',
+      receipt: `vendor_${String(req.vendor.id).slice(-8)}_${Date.now()}`.slice(0, 40),
+      notes: {
+        vendorId: String(req.vendor.id),
+        accountType,
+        credits: String(credits),
+      },
+    });
+
+    await VendorLedgerEntry.create({
       vendorId: req.vendor.id,
       entryType: 'payment',
       accountType,
       title: `Add money → ${credits} credit(s)`,
       amount,
       credits,
-      status: 'Completed',
-      paymentMode: 'ONLINE',
-      paymentId: `ADD-${Date.now()}`,
+      status: 'Pending',
+      paymentMode: 'RAZORPAY',
+      paymentId: rzOrder.id,
+      meta: {
+        razorpayOrderId: rzOrder.id,
+        credits,
+        accountType,
+      },
     });
+
     res.status(201).json({
-      message: `Added ${credits} credit(s) (₹100 = 1 credit).`,
-      entry,
-      credits: vendor.credits,
-      walletBalance: vendor.walletBalance,
+      keyId,
+      orderId: rzOrder.id,
+      amount: rzOrder.amount,
+      currency: rzOrder.currency || 'INR',
+      creditsPreview: credits,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyWalletTopup = async (req, res, next) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ message: 'Missing payment verification fields' });
+    }
+
+    const valid = verifyPaymentSignature({
+      orderId: razorpay_order_id,
+      paymentId: razorpay_payment_id,
+      signature: razorpay_signature,
+    });
+    if (!valid) {
+      return res.status(400).json({ message: 'Invalid payment signature' });
+    }
+
+    const entry = await VendorLedgerEntry.findOne({ paymentId: razorpay_order_id });
+    if (!entry) {
+      return res.status(404).json({ message: 'Top-up order not found' });
+    }
+    if (String(entry.vendorId) !== String(req.vendor.id)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const result = await creditVendorTopup({
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+    });
+
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message });
+    }
+
+    res.json({
+      message: result.alreadyCredited
+        ? 'Payment already credited'
+        : `Added ${result.creditsAdded} credit(s)`,
+      credits: result.credits,
+      walletBalance: result.walletBalance,
+      creditsAdded: result.creditsAdded,
       creditRate: { rupeesPerCredit: 100 },
     });
   } catch (error) {

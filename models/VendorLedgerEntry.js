@@ -31,5 +31,9 @@ const vendorLedgerEntrySchema = new mongoose.Schema(
 );
 
 vendorLedgerEntrySchema.index({ vendorId: 1, createdAt: -1 });
+vendorLedgerEntrySchema.index(
+  { paymentId: 1 },
+  { unique: true, partialFilterExpression: { paymentId: { $type: 'string', $gt: '' } } },
+);
 
 export default mongoose.model('VendorLedgerEntry', vendorLedgerEntrySchema);

@@ -98,6 +98,32 @@ const orderSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  cancelReason: {
+    type: String,
+    default: '',
+  },
+  cancelledAt: {
+    type: Date,
+    default: null,
+  },
+  cancelledBy: {
+    type: String,
+    enum: ['customer', 'vendor', 'admin', ''],
+    default: '',
+  },
+  rescheduleReason: {
+    type: String,
+    default: '',
+  },
+  rescheduledAt: {
+    type: Date,
+    default: null,
+  },
+  rescheduledBy: {
+    type: String,
+    enum: ['customer', 'vendor', 'admin', ''],
+    default: '',
+  },
   vendorIncentive: {
     type: Number,
     default: 0,
