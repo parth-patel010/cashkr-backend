@@ -318,20 +318,49 @@ export const searchDevices = async (req, res, next) => {
       apple: ['apple', 'iphone'],
       iphone: ['apple', 'iphone'],
       samsung: ['samsung', 'galaxy'],
+      galaxy: ['samsung', 'galaxy'],
       xiaomi: ['xiaomi', 'redmi', 'poco', 'mi'],
+      redmi: ['xiaomi', 'redmi', 'poco', 'mi'],
+      poco: ['xiaomi', 'redmi', 'poco', 'mi'],
+      mi: ['xiaomi', 'redmi', 'poco', 'mi'],
       google: ['google', 'pixel'],
+      pixel: ['google', 'pixel'],
       oneplus: ['oneplus', 'one plus'],
+      realme: ['realme'],
+      vivo: ['vivo', 'iqoo'],
+      iqoo: ['vivo', 'iqoo'],
+      oppo: ['oppo'],
+      nothing: ['nothing'],
+      dell: ['dell'],
+      hp: ['hp'],
+      lenovo: ['lenovo'],
+      asus: ['asus'],
+      acer: ['acer'],
+      microsoft: ['microsoft', 'surface'],
+      surface: ['microsoft', 'surface'],
+      msi: ['msi'],
+      razer: ['razer'],
     };
+
+    const brandTokenSet = new Set([
+      ...Object.keys(brandAliases),
+      ...Object.values(brandAliases).flat(),
+    ]);
 
     const tokens = normalized
       .split(' ')
-      .filter((t) => t.length >= 2 && !['the', 'and', 'for', 'with', 'gb', 'ram'].includes(t));
+      .filter((t) => (t.length >= 2 || /^\d+$/.test(t)) && !['the', 'and', 'for', 'with', 'gb', 'ram', 'phone', 'mobile'].includes(t));
 
     const expanded = new Set();
     for (const t of tokens) {
       expanded.add(t);
       const aliases = brandAliases[t];
       if (aliases) aliases.forEach((a) => expanded.add(a));
+    }
+
+    // Keep model family tokens (edge/nord/note/galaxy/pixel/iphone series) when present
+    for (const family of ['edge', 'nord', 'note', 'galaxy', 'pixel', 'iphone', 'reno', 'phone']) {
+      if (normalized.includes(family)) expanded.add(family);
     }
 
     const orClauses = [
@@ -341,9 +370,10 @@ export const searchDevices = async (req, res, next) => {
     ];
 
     for (const t of expanded) {
-      orClauses.push({ modelName: { $regex: t, $options: 'i' } });
-      orClauses.push({ brand: { $regex: t, $options: 'i' } });
-      orClauses.push({ slug: { $regex: t, $options: 'i' } });
+      const escaped = String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      orClauses.push({ modelName: { $regex: escaped, $options: 'i' } });
+      orClauses.push({ brand: { $regex: escaped, $options: 'i' } });
+      orClauses.push({ slug: { $regex: escaped, $options: 'i' } });
     }
 
     const devices = await Device.find(
@@ -353,17 +383,24 @@ export const searchDevices = async (req, res, next) => {
       },
       { category: 1, brand: 1, modelName: 1, slug: 1, imageUrl: 1, variants: 1 },
     )
-      .limit(40)
+      .limit(60)
       .sort({ modelName: 1 })
       .lean();
 
     const scoreDevice = (d) => {
       const hay = `${d.brand || ''} ${d.modelName || ''} ${d.slug || ''}`.toLowerCase();
       let score = 0;
+      let keywordHits = 0;
       for (const t of expanded) {
-        if (hay.includes(t)) score += t.length >= 3 ? 3 : 1;
+        if (!hay.includes(t)) continue;
+        if (/^\d+$/.test(t)) score += 4;
+        else if (t.length >= 3) score += 3;
+        else score += 1;
+        if (!brandTokenSet.has(t)) keywordHits += 1;
       }
       if (hay.includes(normalized)) score += 10;
+      // Prefer models that hit more non-brand keywords (edge + 50 + pro)
+      score += keywordHits * 2;
       return score;
     };
 

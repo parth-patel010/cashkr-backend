@@ -69,6 +69,19 @@ const appSettingsSchema = new mongoose.Schema(
       type: [String],
       default: ['sell', 'buy', 'repair'],
     },
+    maintenanceMode: { type: Boolean, default: false },
+    maintenanceMessage: {
+      type: String,
+      default: "We're working to improve your experience. Please try again later.",
+    },
+    maintenanceContact: { type: String, default: '' },
+    androidMinVersion: { type: String, default: '' },
+    androidDownloadUrl: {
+      type: String,
+      default: 'https://play.google.com/store/apps/details?id=com.devicekart.app',
+    },
+    iosMinVersion: { type: String, default: '' },
+    iosDownloadUrl: { type: String, default: '' },
   },
   { timestamps: true },
 );
