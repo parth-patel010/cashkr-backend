@@ -17,7 +17,8 @@
     "seed:laptop:msi": "node seeds/seedLaptopMSI.js",
     "seed:laptop:razer": "node seeds/seedLaptopRazer.js",
     "seed:brands": "node seeds/seedBrands.js",
-    "seed:repair": "node seeds/seedRepair.js"
+    "seed:repair": "node seeds/seedRepair.js",
+    "seed:smartwatch:apple": "node seeds/seedSmartwatchApple.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
