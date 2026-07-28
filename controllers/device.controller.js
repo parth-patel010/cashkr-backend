@@ -442,6 +442,7 @@ const CATEGORY_PATHS = {
   earbuds: '/sell/earbuds',
   refrigerator: '/sell/refrigerator',
   smartwatch: '/sell/smartwatch',
+  gaming: '/sell/gaming',
 };
 
 const mapQuotedDevice = (d, quoteCount) => {
