@@ -1,9 +1,17 @@
 import CategoryQuiz from '../models/CategoryQuiz.js';
 import { validationResult } from 'express-validator';
 import crypto from 'crypto';
+import { DEFAULT_SMARTWATCH_QUIZ, SMARTWATCH_QUIZ_CATEGORY } from '../config/smartwatchQuizDefaults.js';
 
 const newId = (prefix = 'id') =>
   `${prefix}-${crypto.randomBytes(4).toString('hex')}`;
+
+/** Ensure default smartwatch quiz exists (phone-like % deductions). */
+export const ensureSmartwatchQuiz = async () => {
+  const existing = await CategoryQuiz.findOne({ category: SMARTWATCH_QUIZ_CATEGORY });
+  if (existing) return existing;
+  return CategoryQuiz.create(DEFAULT_SMARTWATCH_QUIZ);
+};
 
 const normalizeQuizPayload = (body = {}) => {
   const category = String(body.category || '')
@@ -54,6 +62,11 @@ export const getPublicCategoryQuiz = async (req, res, next) => {
     const category = String(req.params.category || '')
       .trim()
       .toLowerCase();
+
+    if (category === SMARTWATCH_QUIZ_CATEGORY) {
+      await ensureSmartwatchQuiz();
+    }
+
     const quiz = await CategoryQuiz.findOne({ category, isActive: true }).lean();
     if (!quiz) {
       return res.status(404).json({ message: 'Quiz not found for category' });
@@ -66,6 +79,7 @@ export const getPublicCategoryQuiz = async (req, res, next) => {
 
 export const adminListCategoryQuizzes = async (req, res, next) => {
   try {
+    await ensureSmartwatchQuiz();
     const quizzes = await CategoryQuiz.find().sort({ category: 1 }).lean();
     res.json(quizzes);
   } catch (error) {

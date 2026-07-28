@@ -100,6 +100,17 @@ export const ensureAppSettings = async () => {
           cur.label = def.label;
           changed = true;
         }
+        // Gaming / Smartwatch were default-off; enable sell so they appear on Sell hub
+        if ((def.key === 'gaming' || def.key === 'smartwatch') && def.enabledSell === true) {
+          if (cur.enabledSell === false) {
+            cur.enabledSell = true;
+            changed = true;
+          }
+          if (def.label && cur.label !== def.label) {
+            cur.label = def.label;
+            changed = true;
+          }
+        }
       }
     }
   }
