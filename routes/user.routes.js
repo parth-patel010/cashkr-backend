@@ -4,6 +4,7 @@ import {
   getMe,
   updateMe,
   deleteMe,
+  reportLastQuiz,
   getReferrals,
   applyReferral,
   savePushToken,
@@ -31,6 +32,7 @@ router.use(auth);
 
 router.get('/me', getMe);
 router.patch('/me', updateMe);
+router.post('/me/last-quiz', reportLastQuiz);
 router.delete('/me', deleteMe);
 router.get('/referrals', getReferrals);
 router.post(

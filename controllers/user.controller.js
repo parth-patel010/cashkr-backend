@@ -68,6 +68,37 @@ export const updateMe = async (req, res, next) => {
   }
 };
 
+/** Save last quiz device (smartwatch / gaming / etc.) for admin user logs. */
+export const reportLastQuiz = async (req, res, next) => {
+  try {
+    const { category, brand, modelName, slug, storage, quizPath } = req.body || {};
+    if (!slug && !modelName) {
+      return res.status(400).json({ message: 'slug or modelName is required' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        lastQuizDevice: {
+          category: category || '',
+          brand: brand || '',
+          modelName: modelName || '',
+          slug: slug || '',
+          storage: storage || '',
+          quizPath: quizPath || '',
+          loggedInAt: new Date(),
+        },
+      },
+      { new: true },
+    ).select('-passwordHash -refreshToken');
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ lastQuizDevice: user.lastQuizDevice });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deleteMe = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
