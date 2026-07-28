@@ -6,11 +6,30 @@ import { DEFAULT_SMARTWATCH_QUIZ, SMARTWATCH_QUIZ_CATEGORY } from '../config/sma
 const newId = (prefix = 'id') =>
   `${prefix}-${crypto.randomBytes(4).toString('hex')}`;
 
-/** Ensure default smartwatch quiz exists (phone-like % deductions). */
+const REQUIRED_SW_WINDOW_IDS = ['power', 'screen', 'physical', 'functional', 'accessories'];
+
+function isCompleteSmartwatchQuiz(quiz) {
+  if (!quiz || !Array.isArray(quiz.windows) || quiz.windows.length < REQUIRED_SW_WINDOW_IDS.length) {
+    return false;
+  }
+  const ids = new Set(quiz.windows.map((w) => w.id));
+  return REQUIRED_SW_WINDOW_IDS.every((id) => ids.has(id));
+}
+
+/** Ensure default smartwatch quiz exists with full question set. */
 export const ensureSmartwatchQuiz = async () => {
   const existing = await CategoryQuiz.findOne({ category: SMARTWATCH_QUIZ_CATEGORY });
-  if (existing) return existing;
-  return CategoryQuiz.create(DEFAULT_SMARTWATCH_QUIZ);
+  if (!existing) {
+    return CategoryQuiz.create(DEFAULT_SMARTWATCH_QUIZ);
+  }
+  // Repair empty/incomplete quizzes (e.g. admin stub with 1 blank window)
+  if (!isCompleteSmartwatchQuiz(existing)) {
+    existing.windows = DEFAULT_SMARTWATCH_QUIZ.windows;
+    existing.deductionMode = existing.deductionMode || 'universal';
+    existing.isActive = true;
+    await existing.save();
+  }
+  return existing;
 };
 
 const normalizeQuizPayload = (body = {}) => {
