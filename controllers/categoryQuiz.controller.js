@@ -2,18 +2,20 @@ import CategoryQuiz from '../models/CategoryQuiz.js';
 import { validationResult } from 'express-validator';
 import crypto from 'crypto';
 import { DEFAULT_SMARTWATCH_QUIZ, SMARTWATCH_QUIZ_CATEGORY } from '../config/smartwatchQuizDefaults.js';
+import { DEFAULT_GAMING_QUIZ, GAMING_QUIZ_CATEGORY } from '../config/gamingQuizDefaults.js';
 
 const newId = (prefix = 'id') =>
   `${prefix}-${crypto.randomBytes(4).toString('hex')}`;
 
 const REQUIRED_SW_WINDOW_IDS = ['power', 'screen', 'physical', 'functional', 'accessories'];
+const REQUIRED_GC_WINDOW_IDS = ['power', 'physical', 'functional', 'accessories', 'game_cds'];
 
-function isCompleteSmartwatchQuiz(quiz) {
-  if (!quiz || !Array.isArray(quiz.windows) || quiz.windows.length < REQUIRED_SW_WINDOW_IDS.length) {
+function hasRequiredWindows(quiz, requiredIds) {
+  if (!quiz || !Array.isArray(quiz.windows) || quiz.windows.length < requiredIds.length) {
     return false;
   }
   const ids = new Set(quiz.windows.map((w) => w.id));
-  return REQUIRED_SW_WINDOW_IDS.every((id) => ids.has(id));
+  return requiredIds.every((id) => ids.has(id));
 }
 
 /** Ensure default smartwatch quiz exists with full question set. */
@@ -22,9 +24,23 @@ export const ensureSmartwatchQuiz = async () => {
   if (!existing) {
     return CategoryQuiz.create(DEFAULT_SMARTWATCH_QUIZ);
   }
-  // Repair empty/incomplete quizzes (e.g. admin stub with 1 blank window)
-  if (!isCompleteSmartwatchQuiz(existing)) {
+  if (!hasRequiredWindows(existing, REQUIRED_SW_WINDOW_IDS)) {
     existing.windows = DEFAULT_SMARTWATCH_QUIZ.windows;
+    existing.deductionMode = existing.deductionMode || 'universal';
+    existing.isActive = true;
+    await existing.save();
+  }
+  return existing;
+};
+
+/** Ensure default gaming console quiz exists with full question set. */
+export const ensureGamingQuiz = async () => {
+  const existing = await CategoryQuiz.findOne({ category: GAMING_QUIZ_CATEGORY });
+  if (!existing) {
+    return CategoryQuiz.create(DEFAULT_GAMING_QUIZ);
+  }
+  if (!hasRequiredWindows(existing, REQUIRED_GC_WINDOW_IDS)) {
+    existing.windows = DEFAULT_GAMING_QUIZ.windows;
     existing.deductionMode = existing.deductionMode || 'universal';
     existing.isActive = true;
     await existing.save();
@@ -85,6 +101,9 @@ export const getPublicCategoryQuiz = async (req, res, next) => {
     if (category === SMARTWATCH_QUIZ_CATEGORY) {
       await ensureSmartwatchQuiz();
     }
+    if (category === GAMING_QUIZ_CATEGORY) {
+      await ensureGamingQuiz();
+    }
 
     const quiz = await CategoryQuiz.findOne({ category, isActive: true }).lean();
     if (!quiz) {
@@ -98,7 +117,7 @@ export const getPublicCategoryQuiz = async (req, res, next) => {
 
 export const adminListCategoryQuizzes = async (req, res, next) => {
   try {
-    await ensureSmartwatchQuiz();
+    await Promise.all([ensureSmartwatchQuiz(), ensureGamingQuiz()]);
     const quizzes = await CategoryQuiz.find().sort({ category: 1 }).lean();
     res.json(quizzes);
   } catch (error) {
