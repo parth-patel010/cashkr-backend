@@ -113,6 +113,85 @@ const APPLE_WATCH_MODELS = [
       { storage: '45mm GPS+Cellular', basePrice: 17700 },
     ],
   },
+  {
+    modelName: 'Apple Watch Series 5 Stainless Steel',
+    imageUrl:
+      'https://s3ng.cashify.in/cashify/product/img/xhdpi/c8308775-71c6.jpg?dpr=2&w=320',
+    variants: [
+      { storage: '40mm GPS+Cellular', basePrice: 7130 },
+      { storage: '44mm GPS+Cellular', basePrice: 7450 },
+    ],
+  },
+  {
+    modelName: 'Apple Watch Series 9 Aluminium',
+    imageUrl:
+      'https://s3ng.cashify.in/cashify/product/img/xhdpi/dd0148d4-b8ed.jpg?dpr=2&w=320',
+    variants: [
+      { storage: '41mm GPS Only', basePrice: 17200 },
+      { storage: '45mm GPS Only', basePrice: 17600 },
+      { storage: '41mm GPS+Cellular', basePrice: 18900 },
+      { storage: '45mm GPS+Cellular', basePrice: 19400 },
+    ],
+  },
+  {
+    modelName: 'Apple Watch Series 9 Stainless Steel',
+    imageUrl:
+      'https://s3ng.cashify.in/cashify/product/img/xhdpi/0e8f8bd4-55ca.jpg?dpr=2&w=320',
+    variants: [
+      { storage: '41mm GPS+Cellular', basePrice: 19000 },
+    ],
+  },
+  {
+    modelName: 'Apple Watch Series 10 Aluminium',
+    imageUrl:
+      'https://s3ng.cashify.in/cashify/product/img/xhdpi/90ad5a80-7974.jpg?dpr=2&w=320',
+    variants: [
+      { storage: '42mm GPS Only', basePrice: 21000 },
+      { storage: '46mm GPS Only', basePrice: 21500 },
+      { storage: '42mm GPS+Cellular', basePrice: 22400 },
+      { storage: '46mm GPS+Cellular', basePrice: 21500 },
+    ],
+  },
+  {
+    modelName: 'Apple Watch Series 10 Titanium',
+    imageUrl:
+      'https://s3ng.cashify.in/cashify/product/img/xhdpi/f92c2dd9-2477.jpg?dpr=2&w=320',
+    variants: [
+      { storage: '42mm GPS+Cellular', basePrice: 25500 },
+      { storage: '46mm GPS+Cellular', basePrice: 27000 },
+    ],
+  },
+  {
+    modelName: 'Apple Watch Series 11 Aluminium',
+    imageUrl:
+      'https://s3ng.cashify.in/cashify/product/img/xhdpi/0c2ea8da-5125.jpg?dpr=2&w=320',
+    variants: [
+      { storage: '42mm GPS Only', basePrice: 28000 },
+      { storage: '46mm GPS Only', basePrice: 29800 },
+      { storage: '42mm GPS+Cellular', basePrice: 33200 },
+      { storage: '46mm GPS+Cellular', basePrice: 35200 },
+    ],
+  },
+  {
+    modelName: 'Apple Watch Series 11 Titanium',
+    imageUrl:
+      'https://s3ng.cashify.in/cashify/product/img/xhdpi/26efba0e-043f.jpg?dpr=2&w=320',
+    variants: [
+      { storage: '42mm GPS+Cellular', basePrice: 35700 },
+      { storage: '46mm GPS+Cellular', basePrice: 37700 },
+    ],
+  },
+  {
+    modelName: 'Apple Watch SE 3',
+    imageUrl:
+      'https://s3ng.cashify.in/cashify/product/img/xhdpi/42c992a3-0112.jpg?dpr=2&w=320',
+    variants: [
+      { storage: '40mm GPS Only', basePrice: 13600 },
+      { storage: '44mm GPS Only', basePrice: 14800 },
+      { storage: '40mm GPS+Cellular', basePrice: 17700 },
+      { storage: '44mm GPS+Cellular', basePrice: 19300 },
+    ],
+  },
 ];
 
 async function ensureAppleSmartwatchBrand() {
