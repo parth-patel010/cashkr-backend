@@ -3,12 +3,14 @@ import { validationResult } from 'express-validator';
 import crypto from 'crypto';
 import { DEFAULT_SMARTWATCH_QUIZ, SMARTWATCH_QUIZ_CATEGORY } from '../config/smartwatchQuizDefaults.js';
 import { DEFAULT_GAMING_QUIZ, GAMING_QUIZ_CATEGORY } from '../config/gamingQuizDefaults.js';
+import { DEFAULT_EARBUDS_QUIZ, EARBUDS_QUIZ_CATEGORY } from '../config/earbudsQuizDefaults.js';
 
 const newId = (prefix = 'id') =>
   `${prefix}-${crypto.randomBytes(4).toString('hex')}`;
 
 const REQUIRED_SW_WINDOW_IDS = ['power', 'screen', 'physical', 'functional', 'accessories'];
 const REQUIRED_GC_WINDOW_IDS = ['power', 'physical', 'functional', 'accessories', 'game_cds'];
+const REQUIRED_EB_WINDOW_IDS = ['power', 'voice_mic', 'connectivity', 'physical', 'accessories', 'age'];
 
 function hasRequiredWindows(quiz, requiredIds) {
   if (!quiz || !Array.isArray(quiz.windows) || quiz.windows.length < requiredIds.length) {
@@ -41,6 +43,21 @@ export const ensureGamingQuiz = async () => {
   }
   if (!hasRequiredWindows(existing, REQUIRED_GC_WINDOW_IDS)) {
     existing.windows = DEFAULT_GAMING_QUIZ.windows;
+    existing.deductionMode = existing.deductionMode || 'universal';
+    existing.isActive = true;
+    await existing.save();
+  }
+  return existing;
+};
+
+/** Ensure default earbuds quiz exists with full question set. */
+export const ensureEarbudsQuiz = async () => {
+  const existing = await CategoryQuiz.findOne({ category: EARBUDS_QUIZ_CATEGORY });
+  if (!existing) {
+    return CategoryQuiz.create(DEFAULT_EARBUDS_QUIZ);
+  }
+  if (!hasRequiredWindows(existing, REQUIRED_EB_WINDOW_IDS)) {
+    existing.windows = DEFAULT_EARBUDS_QUIZ.windows;
     existing.deductionMode = existing.deductionMode || 'universal';
     existing.isActive = true;
     await existing.save();
@@ -104,6 +121,9 @@ export const getPublicCategoryQuiz = async (req, res, next) => {
     if (category === GAMING_QUIZ_CATEGORY) {
       await ensureGamingQuiz();
     }
+    if (category === EARBUDS_QUIZ_CATEGORY) {
+      await ensureEarbudsQuiz();
+    }
 
     const quiz = await CategoryQuiz.findOne({ category, isActive: true }).lean();
     if (!quiz) {
@@ -117,7 +137,7 @@ export const getPublicCategoryQuiz = async (req, res, next) => {
 
 export const adminListCategoryQuizzes = async (req, res, next) => {
   try {
-    await Promise.all([ensureSmartwatchQuiz(), ensureGamingQuiz()]);
+    await Promise.all([ensureSmartwatchQuiz(), ensureGamingQuiz(), ensureEarbudsQuiz()]);
     const quizzes = await CategoryQuiz.find().sort({ category: 1 }).lean();
     res.json(quizzes);
   } catch (error) {

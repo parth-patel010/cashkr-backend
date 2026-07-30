@@ -80,7 +80,7 @@ async function run() {
 
   // Ensure constants logos exist even if devices missing for some brands
   const extras = [
-    { name: 'Apple', cats: ['mobile', 'laptop', 'tablet', 'mac', 'smartwatch'] },
+    { name: 'Apple', cats: ['mobile', 'laptop', 'tablet', 'mac', 'smartwatch', 'earbuds'] },
     { name: 'Samsung', cats: ['mobile', 'laptop', 'tablet'] },
   ];
   for (const extra of extras) {
