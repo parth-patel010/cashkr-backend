@@ -27,8 +27,18 @@ export const getBrands = async (req, res, next) => {
       .sort({ sortOrder: 1, name: 1 })
       .lean();
 
-    // Device counts for sell offers only
-    const deviceCategories = ['mobile', 'laptop', 'tablet', 'mac'];
+    // Device counts for sell offers only — every category stored on Device
+    const deviceCategories = [
+      'mobile',
+      'laptop',
+      'tablet',
+      'mac',
+      'tv',
+      'earbuds',
+      'refrigerator',
+      'smartwatch',
+      'gaming',
+    ];
     let modelCounts = {};
 
     if (deviceCategories.includes(category) && offer === 'sell') {
@@ -44,7 +54,7 @@ export const getBrands = async (req, res, next) => {
       ]);
       modelCounts = Object.fromEntries(
         grouped.map((row) => [
-          String(row._id).toLowerCase(),
+          String(row._id).trim().toLowerCase(),
           { modelCount: row.modelCount, maxPrice: row.maxPrice },
         ]),
       );
@@ -92,7 +102,10 @@ export const getBrands = async (req, res, next) => {
 
     if (catalog.length > 0) {
       const brands = catalog.map((b) => {
-        const stats = modelCounts[b.name.toLowerCase()] || { modelCount: 0, maxPrice: 0 };
+        const stats = modelCounts[String(b.name).trim().toLowerCase()] || {
+          modelCount: 0,
+          maxPrice: 0,
+        };
         return {
           brand: b.name,
           slug: b.slug,
