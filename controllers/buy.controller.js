@@ -2,11 +2,45 @@ import BuyProduct, { BUY_CONDITIONS, BUY_CONDITION_LABELS } from '../models/BuyP
 import BuyOrder from '../models/BuyOrder.js';
 import { uploadedFileUrl } from '../middleware/upload.js';
 import mongoose from 'mongoose';
+import { getRazorpay, getRazorpayKeyId, verifyPaymentSignature } from '../utils/razorpay.js';
+import { markBuyOrderPaid } from '../utils/buyPayment.js';
 
 const toObjectId = (id) => {
   if (id instanceof mongoose.Types.ObjectId) return id;
   if (mongoose.Types.ObjectId.isValid(id)) return new mongoose.Types.ObjectId(id);
   return id;
+};
+
+const validateShipping = (shipping = {}) => {
+  const required = ['name', 'phone', 'address', 'pincode', 'city', 'state'];
+  for (const key of required) {
+    if (!String(shipping[key] || '').trim()) return false;
+  }
+  return true;
+};
+
+const normalizeShipping = (shipping = {}) => ({
+  name: String(shipping.name || '').trim(),
+  phone: String(shipping.phone || '').trim(),
+  address: String(shipping.address || '').trim(),
+  pincode: String(shipping.pincode || '').trim(),
+  city: String(shipping.city || '').trim(),
+  state: String(shipping.state || '').trim(),
+});
+
+const resolveBuyProductCondition = async (productId, conditionKey) => {
+  const product = await BuyProduct.findById(productId);
+  if (!product || !product.isActive) {
+    return { error: { status: 404, message: 'Product not found' } };
+  }
+  const condition = product.conditions.find((c) => c.key === conditionKey);
+  if (!condition || Number(condition.price) <= 0) {
+    return { error: { status: 400, message: 'Invalid condition selected' } };
+  }
+  if (condition.stock < 1) {
+    return { error: { status: 400, message: 'Out of stock for this condition' } };
+  }
+  return { product, condition };
 };
 
 const slugify = (value = '') =>
@@ -215,23 +249,27 @@ export const uploadBuyVideo = async (req, res, next) => {
 
 export const createBuyOrder = async (req, res, next) => {
   try {
-    const { productId, conditionKey, shipping } = req.body;
+    const { productId, conditionKey, shipping, paymentMethod = 'cod' } = req.body;
     if (!productId || !conditionKey) {
       return res.status(400).json({ message: 'productId and conditionKey are required' });
     }
 
-    const product = await BuyProduct.findById(productId);
-    if (!product || !product.isActive) {
-      return res.status(404).json({ message: 'Product not found' });
+    const method = String(paymentMethod || 'cod').toLowerCase();
+    if (method !== 'cod') {
+      return res.status(400).json({
+        message: 'Use /buy/orders/create-razorpay for online payment',
+      });
     }
 
-    const condition = product.conditions.find((c) => c.key === conditionKey);
-    if (!condition || Number(condition.price) <= 0) {
-      return res.status(400).json({ message: 'Invalid condition selected' });
+    if (!validateShipping(shipping)) {
+      return res.status(400).json({ message: 'Please fill all shipping details' });
     }
-    if (condition.stock < 1) {
-      return res.status(400).json({ message: 'Out of stock for this condition' });
+
+    const resolved = await resolveBuyProductCondition(productId, conditionKey);
+    if (resolved.error) {
+      return res.status(resolved.error.status).json({ message: resolved.error.message });
     }
+    const { product, condition } = resolved;
 
     condition.stock -= 1;
     await product.save();
@@ -248,11 +286,142 @@ export const createBuyOrder = async (req, res, next) => {
         conditionLabel: condition.label,
         price: condition.price,
       },
-      shipping: shipping || {},
+      shipping: normalizeShipping(shipping),
+      paymentMethod: 'cod',
+      paymentStatus: 'pending',
+      amount: Number(condition.price) || 0,
+      stockDecremented: true,
       status: 'placed',
     });
 
     res.status(201).json(order);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Create pending buy order + Razorpay order (stock decremented after payment). */
+export const createRazorpayBuyOrder = async (req, res, next) => {
+  try {
+    const { productId, conditionKey, shipping } = req.body;
+    if (!productId || !conditionKey) {
+      return res.status(400).json({ message: 'productId and conditionKey are required' });
+    }
+    if (!validateShipping(shipping)) {
+      return res.status(400).json({ message: 'Please fill all shipping details' });
+    }
+
+    const keyId = getRazorpayKeyId();
+    if (!keyId || !process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(503).json({ message: 'Payment gateway is not configured' });
+    }
+
+    const resolved = await resolveBuyProductCondition(productId, conditionKey);
+    if (resolved.error) {
+      return res.status(resolved.error.status).json({ message: resolved.error.message });
+    }
+    const { product, condition } = resolved;
+    const amount = Number(condition.price) || 0;
+    if (amount <= 0) {
+      return res.status(400).json({ message: 'Invalid price' });
+    }
+
+    const order = await BuyOrder.create({
+      userId: toObjectId(req.user.id),
+      productId: product._id,
+      productSnapshot: {
+        brand: product.brand,
+        modelName: product.modelName,
+        title: product.title,
+        imageUrl: product.imageUrl,
+        conditionKey: condition.key,
+        conditionLabel: condition.label,
+        price: condition.price,
+      },
+      shipping: normalizeShipping(shipping),
+      paymentMethod: 'razorpay',
+      paymentStatus: 'pending',
+      amount,
+      stockDecremented: false,
+      status: 'placed',
+    });
+
+    const razorpay = getRazorpay();
+    const rzOrder = await razorpay.orders.create({
+      amount: Math.round(amount * 100),
+      currency: 'INR',
+      receipt: String(order.orderId).slice(0, 40),
+      notes: {
+        type: 'buy',
+        buyOrderId: order.orderId,
+        userId: String(req.user.id),
+      },
+    });
+
+    order.razorpayOrderId = rzOrder.id;
+    await order.save();
+
+    res.status(201).json({
+      orderId: order.orderId,
+      razorpayOrderId: rzOrder.id,
+      amount,
+      amountPaise: rzOrder.amount,
+      currency: 'INR',
+      keyId,
+      productSnapshot: order.productSnapshot,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyBuyPayment = async (req, res, next) => {
+  try {
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      orderId,
+    } = req.body || {};
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ message: 'Missing payment verification fields' });
+    }
+
+    const valid = verifyPaymentSignature({
+      orderId: razorpay_order_id,
+      paymentId: razorpay_payment_id,
+      signature: razorpay_signature,
+    });
+    if (!valid) {
+      return res.status(400).json({ message: 'Invalid payment signature' });
+    }
+
+    const existing = await BuyOrder.findOne({ razorpayOrderId: razorpay_order_id });
+    if (!existing) {
+      return res.status(404).json({ message: 'Buy order not found' });
+    }
+    if (String(existing.userId) !== String(req.user.id)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    if (orderId && existing.orderId !== orderId) {
+      return res.status(400).json({ message: 'Order mismatch' });
+    }
+
+    const result = await markBuyOrderPaid({
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      buyOrderId: existing.orderId,
+    });
+
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message });
+    }
+
+    res.json({
+      message: result.alreadyPaid ? 'Payment already confirmed' : 'Payment successful',
+      order: result.order,
+    });
   } catch (error) {
     next(error);
   }

@@ -71,10 +71,28 @@ export const updateMe = async (req, res, next) => {
 /** Save last quiz device (smartwatch / gaming / etc.) for admin user logs. */
 export const reportLastQuiz = async (req, res, next) => {
   try {
-    const { category, brand, modelName, slug, storage, quizPath } = req.body || {};
+    const {
+      category,
+      brand,
+      modelName,
+      slug,
+      storage,
+      quizPath,
+      answerSummary,
+      answers,
+    } = req.body || {};
     if (!slug && !modelName) {
       return res.status(400).json({ message: 'slug or modelName is required' });
     }
+
+    const summary = Array.isArray(answerSummary)
+      ? answerSummary
+          .filter((row) => row && (row.question || row.answer))
+          .map((row) => ({
+            question: String(row.question || ''),
+            answer: String(row.answer ?? ''),
+          }))
+      : [];
 
     const user = await User.findByIdAndUpdate(
       req.user.id,
@@ -86,6 +104,8 @@ export const reportLastQuiz = async (req, res, next) => {
           slug: slug || '',
           storage: storage || '',
           quizPath: quizPath || '',
+          answerSummary: summary,
+          answers: answers && typeof answers === 'object' ? answers : null,
           loggedInAt: new Date(),
         },
       },

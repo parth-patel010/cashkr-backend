@@ -41,12 +41,19 @@ const orderSchema = new mongoose.Schema({
     generation: String,
     graphicsCard: String,
     hasDedicatedGpu: Boolean,
+    isGpuWorking: Boolean,
     hasTouchscreen: Boolean,
     screenSize: String,
+    powerStatus: String,
     ram: String,
     storageType: String,
     yearOfPurchase: String,
+    yearBracket: String,
     screenCondition: String,
+    bodyIssues: [String],
+    // Category quizzes (smartwatch / gaming / earbuds)
+    quizAnswers: mongoose.Schema.Types.Mixed,
+    answerSummary: [mongoose.Schema.Types.Mixed],
     // Shared
     functionalIssues: [String],
     accessories: mongoose.Schema.Types.Mixed, // String for laptop, [String] for mobile

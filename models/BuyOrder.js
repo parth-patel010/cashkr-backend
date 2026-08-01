@@ -36,6 +36,35 @@ const buyOrderSchema = new mongoose.Schema(
       city: String,
       state: String,
     },
+    paymentMethod: {
+      type: String,
+      enum: ['cod', 'razorpay'],
+      default: 'cod',
+      index: true,
+    },
+    paymentStatus: {
+      type: String,
+      enum: ['pending', 'paid', 'failed', 'refunded'],
+      default: 'pending',
+      index: true,
+    },
+    amount: {
+      type: Number,
+      default: 0,
+    },
+    razorpayOrderId: {
+      type: String,
+      default: '',
+      index: true,
+    },
+    razorpayPaymentId: {
+      type: String,
+      default: '',
+    },
+    stockDecremented: {
+      type: Boolean,
+      default: false,
+    },
     status: {
       type: String,
       enum: ['placed', 'confirmed', 'shipped', 'delivered', 'cancelled'],

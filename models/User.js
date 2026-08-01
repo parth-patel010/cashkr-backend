@@ -78,6 +78,10 @@ const userSchema = new mongoose.Schema({
     slug: { type: String, default: '' },
     storage: { type: String, default: '' },
     quizPath: { type: String, default: '' },
+    /** Human-readable quiz answers: [{ question, answer }] */
+    answerSummary: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    /** Raw quiz answers object (windowId → optionId / optionId[]) */
+    answers: { type: mongoose.Schema.Types.Mixed, default: null },
     loggedInAt: { type: Date },
   },
 }, {

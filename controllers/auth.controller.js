@@ -172,8 +172,26 @@ export const sendOtp = async (req, res, next) => {
 
 const applyQuizContext = (user, quizContext) => {
   if (!quizContext || typeof quizContext !== 'object') return;
-  const { category, brand, modelName, slug, storage, quizPath } = quizContext;
+  const {
+    category,
+    brand,
+    modelName,
+    slug,
+    storage,
+    quizPath,
+    answerSummary,
+    answers,
+  } = quizContext;
   if (!slug && !modelName) return;
+
+  const summary = Array.isArray(answerSummary)
+    ? answerSummary
+        .filter((row) => row && (row.question || row.answer))
+        .map((row) => ({
+          question: String(row.question || ''),
+          answer: String(row.answer ?? ''),
+        }))
+    : [];
 
   user.lastQuizDevice = {
     category: category || 'mobile',
@@ -182,6 +200,8 @@ const applyQuizContext = (user, quizContext) => {
     slug: slug || '',
     storage: storage || '',
     quizPath: quizPath || '',
+    answerSummary: summary,
+    answers: answers && typeof answers === 'object' ? answers : null,
     loggedInAt: new Date(),
   };
 };
