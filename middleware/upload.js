@@ -12,6 +12,7 @@ const FOLDERS = {
   products: 'products',
   videos: 'videos',
   'buy-videos': 'buy-videos',
+  leads: 'leads',
 };
 
 function ensureDir(dirPath) {
@@ -121,6 +122,18 @@ export const uploadBuyVideoMulter = multer({
   fileFilter(_req, file, cb) {
     if (!file.mimetype?.startsWith('video/')) {
       cb(new Error('Only video uploads are allowed'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+export const uploadLeadImage = multer({
+  storage: diskStorageFor('leads'),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (!file.mimetype?.startsWith('image/')) {
+      cb(new Error('Only image uploads are allowed'));
       return;
     }
     cb(null, true);

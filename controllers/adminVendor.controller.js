@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Vendor from '../models/Vendor.js';
 import VendorTrainingItem from '../models/VendorTrainingItem.js';
 import VendorLedgerEntry from '../models/VendorLedgerEntry.js';
@@ -192,9 +193,18 @@ export const adminDeleteTraining = async (req, res, next) => {
 export const adminAssignOrderVendor = async (req, res, next) => {
   try {
     const { vendorId } = req.body;
-    const order = await Order.findOne({
-      $or: [{ orderId: req.params.orderId }, { _id: req.params.orderId }],
-    });
+    const idParam = String(req.params.orderId || '').trim();
+    if (!idParam) {
+      return res.status(400).json({ message: 'Order id is required' });
+    }
+
+    // Prefer human orderId; only query _id when param is a valid ObjectId
+    // (otherwise CastError → "Invalid ID format" for ids like DK-xxxx)
+    const filter = mongoose.Types.ObjectId.isValid(idParam)
+      ? { $or: [{ orderId: idParam }, { _id: idParam }] }
+      : { orderId: idParam };
+
+    const order = await Order.findOne(filter);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
     if (!vendorId) {
@@ -205,6 +215,10 @@ export const adminAssignOrderVendor = async (req, res, next) => {
       if (order.status === 'assigned') order.status = 'scheduled';
       await order.save();
       return res.json({ order });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(String(vendorId))) {
+      return res.status(400).json({ message: 'Invalid vendor' });
     }
 
     const vendor = await Vendor.findById(vendorId);

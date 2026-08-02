@@ -100,6 +100,15 @@ export const ensureAppSettings = async () => {
           cur.label = def.label;
           changed = true;
         }
+        // TV / Fridge sell now use request forms (not brand→model catalog)
+        if (
+          (def.key === 'tv' || def.key === 'refrigerator') &&
+          def.sellPath &&
+          cur.sellPath !== def.sellPath
+        ) {
+          cur.sellPath = def.sellPath;
+          changed = true;
+        }
         // Gaming / Smartwatch were default-off; enable sell so they appear on Sell hub
         if ((def.key === 'gaming' || def.key === 'smartwatch') && def.enabledSell === true) {
           if (cur.enabledSell === false) {

@@ -43,7 +43,7 @@ export const WEBSITE_CATEGORY_DEFS = [
   {
     key: 'tv',
     label: 'TV',
-    sellPath: '/sell/tv/brand',
+    sellPath: '/sell/tv',
     buyPath: '/buy/tv/brand',
     enabledSell: true,
     enabledBuy: true,
@@ -63,7 +63,7 @@ export const WEBSITE_CATEGORY_DEFS = [
   {
     key: 'refrigerator',
     label: 'Refrigerator',
-    sellPath: '/sell/refrigerator/brand',
+    sellPath: '/sell/refrigerator',
     buyPath: '/buy/refrigerator/brand',
     enabledSell: true,
     enabledBuy: true,

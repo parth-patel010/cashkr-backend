@@ -99,6 +99,7 @@ import {
   adminCloseConversation,
 } from '../controllers/chat.controller.js';
 import { upload, uploadBrandImage, uploadVideo, uploadBuyVideoMulter } from '../middleware/upload.js';
+import { getAllLeads, updateLeadStatus } from '../controllers/lead.controller.js';
 
 const router = Router();
 
@@ -134,6 +135,10 @@ router.get('/buy-orders', getAllBuyOrders);
 router.patch('/buy-orders/:id/status', updateBuyOrderStatus);
 router.get('/repair-orders', getAllRepairOrders);
 router.patch('/repair-orders/:id/status', updateRepairOrderStatus);
+
+// Leads (TV / Fridge / Repair request forms)
+router.get('/leads', getAllLeads);
+router.patch('/leads/:id/status', updateLeadStatus);
 
 // Pincodes
 router.get('/pincodes', getAllPincodes);
