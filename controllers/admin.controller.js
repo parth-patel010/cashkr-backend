@@ -181,6 +181,78 @@ export const getAllUsers = async (req, res, next) => {
   }
 };
 
+export const exportUsers = async (req, res, next) => {
+  try {
+    const { search } = req.query;
+    const filter = {};
+    if (search) {
+      filter.$or = [
+        { name: new RegExp(search, 'i') },
+        { email: new RegExp(search, 'i') },
+        { phone: new RegExp(search, 'i') },
+      ];
+    }
+
+    const users = await User.find(filter)
+      .select('-passwordHash -refreshToken')
+      .sort({ createdAt: -1 })
+      .limit(10000)
+      .lean();
+
+    const userIds = users.map((u) => u._id);
+    const orderCounts = await Order.aggregate([
+      { $match: { userId: { $in: userIds } } },
+      { $group: { _id: '$userId', count: { $sum: 1 } } },
+    ]);
+    const countMap = {};
+    orderCounts.forEach((oc) => {
+      countMap[oc._id.toString()] = oc.count;
+    });
+
+    const headers = [
+      'User ID',
+      'Name',
+      'Email',
+      'Phone',
+      'Referral Code',
+      'Login From',
+      'Last Quiz Brand',
+      'Last Quiz Model',
+      'Last Quiz Storage',
+      'Last Quiz At',
+      'Joined At',
+      'Orders Count',
+    ];
+
+    const rows = users.map((user) => {
+      const lqd = user.lastQuizDevice || {};
+      return [
+        user._id,
+        user.name || '',
+        user.email || '',
+        user.phone || '',
+        user.referralCode || '',
+        user.loginFrom || '',
+        lqd.brand || '',
+        lqd.modelName || '',
+        lqd.storage || '',
+        lqd.loggedInAt ? new Date(lqd.loggedInAt).toISOString() : '',
+        user.createdAt ? new Date(user.createdAt).toISOString() : '',
+        countMap[user._id.toString()] || 0,
+      ].map(csvEscape).join(',');
+    });
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    const filename = `users-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(`\uFEFF${csv}`);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getUserById = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id)

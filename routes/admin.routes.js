@@ -15,6 +15,7 @@ import {
   getAllPartners,
   getAllOrders,
   exportOrders,
+  exportUsers,
   updateOrderStatus,
   getAllBuyOrders,
   updateBuyOrderStatus,
@@ -112,6 +113,7 @@ router.get('/stats', getDashboardStats);
 
 // Users
 router.get('/users', getAllUsers);
+router.get('/users/export', exportUsers);
 router.get('/users/:id', getUserById);
 
 // Devices
