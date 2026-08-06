@@ -1,5 +1,6 @@
 import Device from '../models/Device.js';
 import Brand from '../models/Brand.js';
+import { calculateLaptopPrice } from '../utils/laptopPriceCalculator.js';
 
 /** Map API category aliases used by the app/admin */
 const CATEGORY_ALIASES = {
@@ -219,50 +220,66 @@ export const calculatePrice = async (req, res, next) => {
       return res.status(404).json({ message: 'Device not found' });
     }
 
-    // ─── LAPTOP calculation branch ───
-    if (device.category === 'laptop') {
-      const { ram, storage, yearBracket, condition, screenCondition, functionalIssues = [], accessories } = req.body;
+    // ─── LAPTOP / MAC — same calculator as website (overrides + component math) ───
+    if (device.category === 'laptop' || device.category === 'mac') {
+      const {
+        ram,
+        storage,
+        processor,
+        yearBracket,
+        powerStatus,
+        screenSize,
+        hasGpu,
+        isGpuWorking,
+        functionalIssues = [],
+        screenIssues = [],
+        bodyIssues = [],
+        accessories,
+      } = req.body;
 
-      if (!ram || !storage || !yearBracket || !condition || !screenCondition || !accessories) {
-        return res.status(400).json({ message: 'All laptop fields are required' });
+      if (!yearBracket) {
+        return res.status(400).json({ message: 'yearBracket is required' });
       }
 
-      const variant = device.variants.find(v => v.ram === ram && v.storage === storage);
-      if (!variant) {
-        return res.status(400).json({ message: 'Invalid RAM + Storage variant' });
+      const deviceObj = device.toObject ? device.toObject() : device;
+      const result = calculateLaptopPrice(deviceObj, {
+        ram: ram || deviceObj.variants?.[0]?.ram || '',
+        storage: storage || deviceObj.variants?.[0]?.storage || '',
+        processor: processor || deviceObj.variants?.[0]?.processor || deviceObj.processorFamily || '',
+        yearBracket,
+        powerStatus: powerStatus || 'on',
+        screenSize: screenSize || '14-15',
+        hasGpu: !!hasGpu,
+        isGpuWorking: !!isGpuWorking,
+        functionalIssues,
+        screenIssues,
+        bodyIssues,
+        accessories: Array.isArray(accessories)
+          ? accessories
+          : accessories
+            ? [accessories]
+            : ['none'],
+      });
+
+      if (!result) {
+        return res.status(400).json({ message: 'Unable to calculate laptop price' });
       }
-
-      const basePrice = variant.basePrice;
-      const ageMult = device.ageMultipliers?.[yearBracket] || 1;
-      const condMult = device.conditionMultipliers?.[condition] || 1;
-      const screenMult = device.screenMultipliers?.[screenCondition] || 1;
-
-      const ageAdjustment = Math.round(basePrice * ageMult) - basePrice;
-      const condBase = Math.round(basePrice * ageMult);
-      const conditionAdjustment = Math.round(condBase * condMult) - condBase;
-      const screenBase = condBase + conditionAdjustment;
-      const screenAdjustment = Math.round(screenBase * screenMult) - screenBase;
-
-      let functionalDeduction = 0;
-      for (const issue of functionalIssues) {
-        if (device.functionalDeductions?.[issue]) {
-          functionalDeduction += device.functionalDeductions[issue];
-        }
-      }
-
-      const accBonus = device.accessoriesBonus?.[accessories] || 0;
-
-      const rawFinal = screenBase + screenAdjustment - functionalDeduction + accBonus;
-      const finalPrice = Math.max(Math.round(rawFinal / 100) * 100, 0);
 
       return res.json({
-        basePrice,
-        ageAdjustment,
-        conditionAdjustment,
-        screenAdjustment,
-        functionalDeduction: -functionalDeduction,
-        accessoriesBonus: accBonus,
-        finalPrice,
+        ...result,
+        totalDeductionPct:
+          result.basePrice > 0
+            ? Math.round(((result.basePrice - result.finalPrice) / result.basePrice) * 100)
+            : 0,
+        breakdown: {
+          ageAdjustment: result.ageAdjustment || 0,
+          powerDeduction: result.powerDeduction || 0,
+          functionalDeduction: result.functionalDeduction || 0,
+          screenDeduction: result.screenDeduction || 0,
+          bodyDeduction: result.bodyDeduction || 0,
+          accessoriesBonus: result.accessoriesBonus || 0,
+          priceSource: result.priceSource || 'calculator',
+        },
       });
     }
 
