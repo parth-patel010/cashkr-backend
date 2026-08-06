@@ -139,7 +139,7 @@ export const getDashboardStats = async (req, res, next) => {
 
 export const getAllUsers = async (req, res, next) => {
   try {
-    const { search, page = 1, limit = 20 } = req.query;
+    const { search, page = 1, limit = 20, loginFrom } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const filter = {};
@@ -151,7 +151,25 @@ export const getAllUsers = async (req, res, next) => {
       ];
     }
 
-    const [users, total] = await Promise.all([
+    const source = String(loginFrom || '').trim();
+    if (source === 'App') {
+      filter.loginFrom = 'App';
+    } else if (source === 'Website') {
+      // Treat missing/legacy values as Website
+      filter.$and = [
+        ...(filter.$and || []),
+        {
+          $or: [
+            { loginFrom: 'Website' },
+            { loginFrom: { $exists: false } },
+            { loginFrom: null },
+            { loginFrom: '' },
+          ],
+        },
+      ];
+    }
+
+    const [users, total, appCount, websiteCount, allCount] = await Promise.all([
       User.find(filter)
         .select('-passwordHash -refreshToken')
         .sort({ createdAt: -1 })
@@ -159,6 +177,16 @@ export const getAllUsers = async (req, res, next) => {
         .limit(parseInt(limit))
         .lean(),
       User.countDocuments(filter),
+      User.countDocuments({ loginFrom: 'App' }),
+      User.countDocuments({
+        $or: [
+          { loginFrom: 'Website' },
+          { loginFrom: { $exists: false } },
+          { loginFrom: null },
+          { loginFrom: '' },
+        ],
+      }),
+      User.countDocuments({}),
     ]);
 
     // Attach order count per user
@@ -172,10 +200,21 @@ export const getAllUsers = async (req, res, next) => {
 
     const enrichedUsers = users.map(u => ({
       ...u,
+      loginFrom: u.loginFrom === 'App' ? 'App' : 'Website',
       orderCount: countMap[u._id.toString()] || 0,
     }));
 
-    res.json({ users: enrichedUsers, total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) });
+    res.json({
+      users: enrichedUsers,
+      total,
+      page: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)) || 1,
+      counts: {
+        all: allCount,
+        app: appCount,
+        website: websiteCount,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -183,13 +222,30 @@ export const getAllUsers = async (req, res, next) => {
 
 export const exportUsers = async (req, res, next) => {
   try {
-    const { search } = req.query;
+    const { search, loginFrom } = req.query;
     const filter = {};
     if (search) {
       filter.$or = [
         { name: new RegExp(search, 'i') },
         { email: new RegExp(search, 'i') },
         { phone: new RegExp(search, 'i') },
+      ];
+    }
+
+    const source = String(loginFrom || '').trim();
+    if (source === 'App') {
+      filter.loginFrom = 'App';
+    } else if (source === 'Website') {
+      filter.$and = [
+        ...(filter.$and || []),
+        {
+          $or: [
+            { loginFrom: 'Website' },
+            { loginFrom: { $exists: false } },
+            { loginFrom: null },
+            { loginFrom: '' },
+          ],
+        },
       ];
     }
 
@@ -232,7 +288,7 @@ export const exportUsers = async (req, res, next) => {
         user.email || '',
         user.phone || '',
         user.referralCode || '',
-        user.loginFrom || '',
+        user.loginFrom === 'App' ? 'App' : 'Website',
         lqd.brand || '',
         lqd.modelName || '',
         lqd.storage || '',

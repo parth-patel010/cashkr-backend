@@ -10,7 +10,7 @@ const MAX_SLOT_BANNERS = 6;
 const DEFAULT_ANDROID_DOWNLOAD =
   'https://play.google.com/store/apps/details?id=com.devicekart.app';
 const DEFAULT_MAINTENANCE_MESSAGE =
-  "We're working to improve your experience. Please try again later.";
+  "Stay tuned — we're currently under maintenance. We'll be back shortly.";
 
 /** Compare dotted versions (1.2.3). Returns -1 / 0 / 1. Fail-open → 0. */
 function compareVersions(a, b) {

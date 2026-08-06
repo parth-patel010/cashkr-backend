@@ -241,7 +241,21 @@ export const savePushToken = async (req, res, next) => {
 export const listMyNotifications = async (req, res, next) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
-    const items = await UserNotification.find({ userId: req.user.id })
+    // Only recent inbox items — like normal notifications, not a forever archive.
+    const maxAgeDays = 14;
+    const sinceFloor = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
+    let since = sinceFloor;
+    if (typeof req.query.since === 'string' && req.query.since.trim()) {
+      const parsed = new Date(req.query.since.trim());
+      if (!Number.isNaN(parsed.getTime()) && parsed > sinceFloor) {
+        since = parsed;
+      }
+    }
+
+    const items = await UserNotification.find({
+      userId: req.user.id,
+      createdAt: { $gte: since },
+    })
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -253,9 +267,20 @@ export const listMyNotifications = async (req, res, next) => {
 
 export const getMyUnreadNotificationCount = async (req, res, next) => {
   try {
+    const maxAgeDays = 14;
+    const sinceFloor = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
+    let since = sinceFloor;
+    if (typeof req.query.since === 'string' && req.query.since.trim()) {
+      const parsed = new Date(req.query.since.trim());
+      if (!Number.isNaN(parsed.getTime()) && parsed > sinceFloor) {
+        since = parsed;
+      }
+    }
+
     const count = await UserNotification.countDocuments({
       userId: req.user.id,
       readAt: null,
+      createdAt: { $gte: since },
     });
     res.json({ count });
   } catch (error) {

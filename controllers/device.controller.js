@@ -242,9 +242,12 @@ export const calculatePrice = async (req, res, next) => {
       }
 
       const deviceObj = device.toObject ? device.toObject() : device;
+      // Some catalog rows use empty ram + "Standard" storage — still quote them.
+      const resolvedRam = ram || deviceObj.variants?.[0]?.ram || '';
+      const resolvedStorage = storage || deviceObj.variants?.[0]?.storage || '';
       const result = calculateLaptopPrice(deviceObj, {
-        ram: ram || deviceObj.variants?.[0]?.ram || '',
-        storage: storage || deviceObj.variants?.[0]?.storage || '',
+        ram: resolvedRam,
+        storage: resolvedStorage,
         processor: processor || deviceObj.variants?.[0]?.processor || deviceObj.processorFamily || '',
         yearBracket,
         powerStatus: powerStatus || 'on',

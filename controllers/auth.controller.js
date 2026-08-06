@@ -25,6 +25,7 @@ export const register = async (req, res, next) => {
       phone,
       passwordHash,
       referredBy: referralCode || null,
+      loginFrom: 'Website',
     });
 
     const accessToken = signAccessToken(user._id);
@@ -72,6 +73,7 @@ export const login = async (req, res, next) => {
     const refreshToken = signRefreshToken(user._id);
 
     user.refreshToken = refreshToken;
+    user.loginFrom = 'Website';
     await user.save();
 
     res.json({
@@ -228,6 +230,10 @@ export const verifyOtp = async (req, res, next) => {
 
     const trimmedName = typeof name === 'string' ? name.trim() : '';
 
+    const appKey = req.headers['x-devicekart-app-key'];
+    const configuredKey = process.env.MOBILE_APP_API_KEY;
+    const isAppLogin = Boolean(configuredKey && appKey && appKey === configuredKey);
+
     let user = await User.findOne({ phone });
     let isNewUser = false;
 
@@ -235,6 +241,7 @@ export const verifyOtp = async (req, res, next) => {
       user = await User.create({
         phone,
         name: trimmedName || 'User',
+        loginFrom: isAppLogin ? 'App' : 'Website',
       });
       isNewUser = true;
     } else if (trimmedName) {
@@ -246,9 +253,6 @@ export const verifyOtp = async (req, res, next) => {
 
     applyQuizContext(user, quizContext);
 
-    const appKey = req.headers['x-devicekart-app-key'];
-    const configuredKey = process.env.MOBILE_APP_API_KEY;
-    const isAppLogin = Boolean(configuredKey && appKey && appKey === configuredKey);
     user.loginFrom = isAppLogin ? 'App' : 'Website';
 
     const needsName = !user.name || user.name.trim() === 'User' || user.name.trim().length < 2;

@@ -86,7 +86,7 @@ export const createLead = async (req, res, next) => {
       issues,
       preferredSlot: cleanStr(body.preferredSlot, 40),
       preferredDate: cleanStr(body.preferredDate, 40),
-      source: 'website',
+      source: cleanStr(body.source, 40) || 'website',
     });
 
     res.status(201).json({

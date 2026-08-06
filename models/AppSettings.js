@@ -72,7 +72,7 @@ const appSettingsSchema = new mongoose.Schema(
     maintenanceMode: { type: Boolean, default: false },
     maintenanceMessage: {
       type: String,
-      default: "We're working to improve your experience. Please try again later.",
+      default: "Stay tuned — we're currently under maintenance. We'll be back shortly.",
     },
     maintenanceContact: { type: String, default: '' },
     androidMinVersion: { type: String, default: '' },

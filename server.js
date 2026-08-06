@@ -12,8 +12,10 @@ import connectDB from './config/db.js';
 import { getAllowedOrigins, isAllowedOrigin } from './config/origins.js';
 import errorHandler from './middleware/errorHandler.js';
 import { initChatSocket } from './socket/chatSocket.js';
-import { globalLimiter } from './middleware/rateLimits.js';
+import { globalLimiter, orderCreateLimiter } from './middleware/rateLimits.js';
 import { logSecurityEvent } from './utils/logSecurityEvent.js';
+import { uploadLeadImage } from './middleware/upload.js';
+import { uploadLeadPhoto as handleLeadPhotoUpload } from './controllers/lead.controller.js';
 
 import authRoutes from './routes/auth.routes.js';
 import deviceRoutes from './routes/device.routes.js';
@@ -78,6 +80,14 @@ app.post(
 
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+
+// Public lead photo upload (works even if /api/leads isn't wired on an older deploy)
+app.post(
+  '/api/uploads/lead-photo',
+  orderCreateLimiter,
+  uploadLeadImage.single('photo'),
+  handleLeadPhotoUpload,
+);
 
 // Local uploaded media (images/videos) — upload routes keep their own multer limits
 app.use('/api/uploads', express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), 'uploads')));
