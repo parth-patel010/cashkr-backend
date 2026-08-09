@@ -738,26 +738,37 @@ export const updateRepairOrderStatus = async (req, res, next) => {
 export const getAllPincodes = async (req, res, next) => {
   try {
     const { search, page = 1, limit = 50 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit, 10) || 50));
+    const skip = (pageNum - 1) * limitNum;
 
     const filter = {};
     if (search) {
-      filter.$or = [
-        { code: new RegExp(search, 'i') },
-        { city: new RegExp(search, 'i') },
-      ];
+      const q = String(search).trim();
+      if (q) {
+        filter.$or = [
+          { code: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+          { city: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+          { state: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+        ];
+      }
     }
 
     const [pincodes, total] = await Promise.all([
       Pincode.find(filter)
-        .sort({ createdAt: -1 })
+        .sort({ code: 1 })
         .skip(skip)
-        .limit(parseInt(limit))
+        .limit(limitNum)
         .lean(),
       Pincode.countDocuments(filter),
     ]);
 
-    res.json({ pincodes, total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) });
+    res.json({
+      pincodes,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    });
   } catch (error) {
     next(error);
   }
@@ -765,7 +776,22 @@ export const getAllPincodes = async (req, res, next) => {
 
 export const createPincode = async (req, res, next) => {
   try {
-    const pincode = await Pincode.create(req.body);
+    const code = String(req.body.code || '').replace(/\D/g, '').slice(0, 6);
+    if (code.length !== 6) {
+      return res.status(400).json({ message: 'Pincode must be a 6-digit number' });
+    }
+    const city = String(req.body.city || '').trim();
+    const state = String(req.body.state || '').trim();
+    if (!city || !state) {
+      return res.status(400).json({ message: 'City and state are required' });
+    }
+
+    const pincode = await Pincode.create({
+      code,
+      city,
+      state,
+      isActive: req.body.isActive !== false,
+    });
     res.status(201).json(pincode);
   } catch (error) {
     if (error.code === 11000) {
@@ -777,9 +803,19 @@ export const createPincode = async (req, res, next) => {
 
 export const updatePincode = async (req, res, next) => {
   try {
+    const updates = { ...req.body };
+    if (updates.code != null) {
+      updates.code = String(updates.code).replace(/\D/g, '').slice(0, 6);
+      if (updates.code.length !== 6) {
+        return res.status(400).json({ message: 'Pincode must be a 6-digit number' });
+      }
+    }
+    if (updates.city != null) updates.city = String(updates.city).trim();
+    if (updates.state != null) updates.state = String(updates.state).trim();
+
     const pincode = await Pincode.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updates,
       { new: true, runValidators: true }
     );
 
