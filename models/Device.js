@@ -175,6 +175,16 @@ const deviceSchema = new mongoose.Schema({
     default: true,
   },
 
+  /**
+   * Credits a vendor must have to accept a lead for this model.
+   * Charged from vendor.credits on accept (₹100 = 1 credit).
+   */
+  orderCreditCost: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+
   /** How many times users started the sell condition quiz for this device */
   quizCount: {
     type: Number,

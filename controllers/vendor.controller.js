@@ -17,6 +17,7 @@ import {
 import { createInboxNotifications } from '../utils/userInbox.js';
 import { getRazorpay, getRazorpayKeyId, verifyPaymentSignature } from '../utils/razorpay.js';
 import { creditVendorTopup } from '../utils/vendorTopup.js';
+import { creditCostBySlugs, resolveOrderCreditCost } from '../utils/orderCreditCost.js';
 
 const pushSellOrderUpdate = async (order, status, otp = null) => {
   if (!order?.userId) return;
@@ -99,6 +100,8 @@ const mapOrderCard = (o, imageUrl = '') => {
     imageUrl: imageUrl || o.device?.imageUrl || '',
     price: o.priceBreakdown?.finalPrice || 0,
     incentive: o.vendorIncentive || 0,
+    creditsRequired: o.creditsRequired != null ? Number(o.creditsRequired) : 0,
+    vendorCreditCharged: o.vendorCreditCharged || 0,
     customerName: o.pickup?.name || '',
     customerPhone: o.pickup?.phone || '',
     alternatePhone: o.pickup?.alternatePhone || '',
@@ -125,12 +128,25 @@ const mapOrderCard = (o, imageUrl = '') => {
   };
 };
 
-const attachImagesToOrders = async (orders) => {
+const attachImagesToOrders = async (orders, vendorDefaultCost = 0) => {
   const slugs = [...new Set(orders.map((o) => o.device?.slug).filter(Boolean))];
-  if (!slugs.length) return orders.map((o) => mapOrderCard(o));
-  const devices = await Device.find({ slug: { $in: slugs } }).select('slug imageUrl').lean();
-  const bySlug = Object.fromEntries(devices.map((d) => [d.slug, d.imageUrl || '']));
-  return orders.map((o) => mapOrderCard(o, bySlug[o.device?.slug] || ''));
+  const bySlugImage = {};
+  const bySlugCredit = await creditCostBySlugs(slugs);
+  if (slugs.length) {
+    const devices = await Device.find({ slug: { $in: slugs } }).select('slug imageUrl').lean();
+    for (const d of devices) {
+      bySlugImage[d.slug] = d.imageUrl || '';
+    }
+  }
+  const fallback = Math.max(0, Number(vendorDefaultCost) || 0);
+  return orders.map((o) => {
+    const modelCost = bySlugCredit[o.device?.slug] || 0;
+    const creditsRequired = modelCost > 0 ? modelCost : fallback;
+    return mapOrderCard(
+      { ...o, creditsRequired },
+      bySlugImage[o.device?.slug] || '',
+    );
+  });
 };
 
 const normalizePins = (value) => {
@@ -299,17 +315,15 @@ export const listAvailableOrders = async (req, res, next) => {
     }
 
     const vendorDoc = await Vendor.findById(req.vendor.id).select('credits orderCreditCost').lean();
-    const creditsRequired = Number(vendorDoc?.orderCreditCost) || 0;
+    const vendorDefaultCost = Number(vendorDoc?.orderCreditCost) || 0;
     const vendorCredits = Number(vendorDoc?.credits) || 0;
-    const cards = await attachImagesToOrders(orders);
+    const cards = await attachImagesToOrders(orders, vendorDefaultCost);
     res.json({
-      orders: cards.map((o) => ({
-        ...o,
-        creditsRequired,
-      })),
-      creditsRequired,
+      orders: cards,
       vendorCredits,
       creditRate: { rupeesPerCredit: 100 },
+      /** @deprecated Prefer per-order creditsRequired; kept for older vendor apps */
+      creditsRequired: vendorDefaultCost,
       servicePincodes: resolved.servicePincodes,
       appliedPincodes: resolved.appliedPincodes,
       pinStatus: resolved.pinStatus,
@@ -326,10 +340,22 @@ export const acceptOrder = async (req, res, next) => {
     const vendorDoc = await Vendor.findById(req.vendor.id);
     if (!vendorDoc) return res.status(404).json({ message: 'Vendor not found' });
 
-    const cost = Number(vendorDoc.orderCreditCost) || 0;
-    if (cost > 0 && Number(vendorDoc.credits || 0) < cost) {
+    const pending = await Order.findOne({
+      ...orderMatch(orderId),
+      vendorId: null,
+      status: { $in: AVAILABLE },
+    }).lean();
+    if (!pending) {
+      return res.status(409).json({ message: 'Order not available or already assigned' });
+    }
+
+    const cost = await resolveOrderCreditCost(pending, vendorDoc.orderCreditCost);
+    const vendorCredits = Number(vendorDoc.credits || 0);
+    if (cost > 0 && vendorCredits < cost) {
       return res.status(402).json({
-        message: `Insufficient credits. Need ${cost} credit(s). Add money (₹100 = 1 credit).`,
+        message: `Insufficient credits. This model needs ${cost} credit(s). You have ${vendorCredits}. Add money (₹100 = 1 credit).`,
+        creditsRequired: cost,
+        vendorCredits,
       });
     }
 
@@ -347,6 +373,7 @@ export const acceptOrder = async (req, res, next) => {
           partnerName: vendorDoc.name,
           partnerPhone: vendorDoc.phone,
           vendorIncentive: Number(req.body?.incentive) || 0,
+          vendorCreditCharged: cost,
         },
       },
       { new: true },
@@ -371,7 +398,12 @@ export const acceptOrder = async (req, res, next) => {
       });
     }
 
-    res.json({ order: mapOrderCard(order), message: 'Order accepted', creditsCharged: cost });
+    res.json({
+      order: mapOrderCard(order),
+      message: 'Order accepted',
+      creditsCharged: cost,
+      vendorCredits: Number(vendorDoc.credits || 0),
+    });
   } catch (error) {
     next(error);
   }

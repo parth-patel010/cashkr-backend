@@ -135,6 +135,11 @@ const orderSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  /** Credits deducted from vendor when they accepted this lead (from device model cost). */
+  vendorCreditCharged: {
+    type: Number,
+    default: 0,
+  },
   deviceReport: {
     type: mongoose.Schema.Types.Mixed,
     default: null,
