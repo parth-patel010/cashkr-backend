@@ -32,12 +32,129 @@ export const adminListVendors = async (req, res, next) => {
   }
 };
 
+const ORDER_STATUSES = [
+  'placed',
+  'scheduled',
+  'assigned',
+  'picked',
+  'verified',
+  'payment_initiated',
+  'completed',
+  'cancelled',
+  'failed',
+];
+
 export const adminGetVendor = async (req, res, next) => {
   try {
     const vendor = await Vendor.findById(req.params.id).lean();
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
-    const orders = await Order.find({ vendorId: vendor._id }).sort({ createdAt: -1 }).limit(50).lean();
-    res.json({ vendor, orders });
+
+    const { status, search, page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const vendorFilter = { vendorId: vendor._id };
+    const listFilter = { ...vendorFilter };
+    if (status && ORDER_STATUSES.includes(status)) {
+      listFilter.status = status;
+    }
+    if (search) {
+      const q = new RegExp(String(search).trim(), 'i');
+      listFilter.$or = [
+        { orderId: q },
+        { 'device.brand': q },
+        { 'device.modelName': q },
+        { 'pickup.name': q },
+        { 'pickup.phone': q },
+        { 'pickup.city': q },
+        { 'pickup.pincode': q },
+      ];
+    }
+
+    const [orders, total, statusAgg, revenueAgg] = await Promise.all([
+      Order.find(listFilter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .populate('userId', 'name email phone')
+        .lean(),
+      Order.countDocuments(listFilter),
+      Order.aggregate([
+        { $match: vendorFilter },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      Order.aggregate([
+        { $match: vendorFilter },
+        {
+          $group: {
+            _id: null,
+            totalOrders: { $sum: 1 },
+            totalRevenue: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$status', 'completed'] },
+                  { $ifNull: ['$priceBreakdown.finalPrice', 0] },
+                  0,
+                ],
+              },
+            },
+            assignedValue: {
+              $sum: { $ifNull: ['$priceBreakdown.finalPrice', 0] },
+            },
+            totalIncentive: { $sum: { $ifNull: ['$vendorIncentive', 0] } },
+            completedIncentive: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$status', 'completed'] },
+                  { $ifNull: ['$vendorIncentive', 0] },
+                  0,
+                ],
+              },
+            },
+            totalCreditsCharged: { $sum: { $ifNull: ['$vendorCreditCharged', 0] } },
+          },
+        },
+      ]),
+    ]);
+
+    const statusCounts = ORDER_STATUSES.reduce((acc, s) => {
+      acc[s] = 0;
+      return acc;
+    }, {});
+    for (const row of statusAgg) {
+      if (row?._id) statusCounts[row._id] = row.count;
+    }
+
+    const totals = revenueAgg[0] || {};
+    const completedCount = statusCounts.completed || 0;
+    const cancelledCount = statusCounts.cancelled || 0;
+    const failedCount = statusCounts.failed || 0;
+    const inProgressCount = (totals.totalOrders || 0) - completedCount - cancelledCount - failedCount;
+
+    res.json({
+      vendor,
+      orders,
+      total,
+      page: pageNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      statuses: ORDER_STATUSES,
+      stats: {
+        totalOrders: totals.totalOrders || 0,
+        completedCount,
+        cancelledCount,
+        failedCount,
+        inProgressCount,
+        statusCounts,
+        totalRevenue: totals.totalRevenue || 0,
+        assignedValue: totals.assignedValue || 0,
+        totalIncentive: totals.totalIncentive || 0,
+        completedIncentive: totals.completedIncentive || 0,
+        totalCreditsCharged: totals.totalCreditsCharged || 0,
+        walletBalance: vendor.walletBalance || 0,
+        credits: vendor.credits || 0,
+      },
+    });
   } catch (error) {
     next(error);
   }
