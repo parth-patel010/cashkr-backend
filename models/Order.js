@@ -67,6 +67,12 @@ const orderSchema = new mongoose.Schema({
     batteryDeduction: { type: Number, default: 0 },    // mobile only
     accessoriesBonus: { type: Number, default: 0 },
     finalPrice: { type: Number, default: 0 },
+    quotedFinalPrice: { type: Number, default: null },
+    vendorAdjustment: { type: Number, default: 0 },
+    laterAdjustment: { type: Number, default: 0 },
+    laterAdjustmentNote: { type: String, default: '' },
+    laterAdjustedAt: { type: Date, default: null },
+    laterAdjustedBy: { type: String, default: '' },
   },
   pickup: {
     name: String,

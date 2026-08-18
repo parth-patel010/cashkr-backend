@@ -17,6 +17,7 @@ import {
   exportOrders,
   exportUsers,
   updateOrderStatus,
+  adminLaterAdjustOrder,
   getAllBuyOrders,
   updateBuyOrderStatus,
   getAllRepairOrders,
@@ -131,6 +132,7 @@ router.get('/partners', getAllPartners);
 router.get('/orders/export', exportOrders);
 router.get('/orders', getAllOrders);
 router.patch('/orders/:id/status', updateOrderStatus);
+router.patch('/orders/:id/later-adjustment', adminLaterAdjustOrder);
 router.get('/buy-orders', getAllBuyOrders);
 router.patch('/buy-orders/:id/status', updateBuyOrderStatus);
 router.get('/repair-orders', getAllRepairOrders);

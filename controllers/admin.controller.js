@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Device from '../models/Device.js';
 import Order from '../models/Order.js';
@@ -613,6 +614,66 @@ export const updateOrderStatus = async (req, res, next) => {
     }
 
     res.json(order);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const findSellOrder = (idParam) => {
+  const id = String(idParam || '').trim();
+  if (!id) return null;
+  const filter = mongoose.Types.ObjectId.isValid(id)
+    ? { $or: [{ orderId: id }, { _id: id }] }
+    : { orderId: id };
+  return Order.findOne(filter);
+};
+
+export const adminLaterAdjustOrder = async (req, res, next) => {
+  try {
+    const amount = Number(req.body.amount);
+    if (!Number.isFinite(amount)) {
+      return res.status(400).json({ message: 'Enter a valid later adjustment amount' });
+    }
+
+    const query = findSellOrder(req.params.id);
+    if (!query) return res.status(400).json({ message: 'Order id is required' });
+    const order = await query;
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.status !== 'completed') {
+      return res.status(400).json({ message: 'Later adjustment is only allowed on completed orders' });
+    }
+
+    const pb = order.priceBreakdown || {};
+    const vendorAdj = Number(order.vendorPriceAdjustment ?? pb.vendorAdjustment) || 0;
+    const prevLater = Number(pb.laterAdjustment) || 0;
+    let quoted =
+      pb.quotedFinalPrice != null && pb.quotedFinalPrice !== ''
+        ? Number(pb.quotedFinalPrice)
+        : NaN;
+    if (!Number.isFinite(quoted)) {
+      quoted = (Number(pb.finalPrice) || 0) - vendorAdj - prevLater;
+    }
+
+    const finalPrice = Math.max(0, Math.round(quoted + vendorAdj + amount));
+    const note = String(req.body.note || '').trim();
+
+    order.priceBreakdown = {
+      ...(typeof pb.toObject === 'function' ? pb.toObject() : pb),
+      quotedFinalPrice: quoted,
+      vendorAdjustment: vendorAdj,
+      laterAdjustment: amount,
+      laterAdjustmentNote: note,
+      laterAdjustedAt: new Date(),
+      laterAdjustedBy: req.admin?.email || 'admin',
+      finalPrice,
+    };
+    order.markModified('priceBreakdown');
+    await order.save();
+
+    await pushOrderStatusUpdate(order.userId, 'sell', order.status, order);
+
+    const populated = await Order.findById(order._id).populate('userId', 'name email phone').lean();
+    res.json({ order: populated || order });
   } catch (error) {
     next(error);
   }
