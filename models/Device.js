@@ -190,12 +190,19 @@ const deviceSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+
+  /** How many times users selected this device from site search */
+  searchCount: {
+    type: Number,
+    default: 0,
+  },
 }, {
   timestamps: true,
 });
 
 deviceSchema.index({ brand: 1, category: 1 });
 deviceSchema.index({ isActive: 1, quizCount: -1 });
+deviceSchema.index({ isActive: 1, searchCount: -1 });
 
 const Device = mongoose.model('Device', deviceSchema);
 export default Device;

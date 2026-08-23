@@ -409,12 +409,16 @@ export const searchDevices = async (req, res, next) => {
       orClauses.push({ slug: { $regex: escaped, $options: 'i' } });
     }
 
+    const category = req.query.category;
+    const findFilter = {
+      isActive: true,
+      $or: orClauses,
+    };
+    if (category && category !== 'all') findFilter.category = category;
+
     const devices = await Device.find(
-      {
-        isActive: true,
-        $or: orClauses,
-      },
-      { category: 1, brand: 1, modelName: 1, slug: 1, imageUrl: 1, variants: 1 },
+      findFilter,
+      { category: 1, brand: 1, modelName: 1, slug: 1, imageUrl: 1, variants: 1, searchCount: 1 },
     )
       .limit(60)
       .sort({ modelName: 1 })
@@ -440,7 +444,7 @@ export const searchDevices = async (req, res, next) => {
     const ranked = devices
       .map((d) => ({ d, score: scoreDevice(d) }))
       .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score || a.d.modelName.localeCompare(b.d.modelName))
+      .sort((a, b) => b.score - a.score || (b.d.searchCount || 0) - (a.d.searchCount || 0) || a.d.modelName.localeCompare(b.d.modelName))
       .slice(0, 15)
       .map(({ d }) => ({
         category: d.category,
@@ -566,6 +570,153 @@ export const recordQuiz = async (req, res, next) => {
     }
 
     res.json({ slug: device.slug, quizCount: device.quizCount });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Increment searchCount when a user picks a device from search results. */
+export const recordSearch = async (req, res, next) => {
+  try {
+    const { slug } = req.params;
+    const device = await Device.findOneAndUpdate(
+      { slug, isActive: true },
+      { $inc: { searchCount: 1 } },
+      { new: true, projection: { slug: 1, searchCount: 1 } },
+    );
+
+    if (!device) {
+      return res.status(404).json({ message: 'Device not found' });
+    }
+
+    res.json({ slug: device.slug, searchCount: device.searchCount });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Top models by searchCount (popular search chips). Falls back to quizCount / price. */
+export const getPopularSearches = async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 12);
+    const category = req.query.category;
+
+    const filter = { isActive: true };
+    if (category && category !== 'all') filter.category = category;
+
+    const bySearch = await Device.find(filter)
+      .sort({ searchCount: -1, quizCount: -1, 'variants.0.basePrice': -1 })
+      .limit(limit)
+      .lean();
+
+    const hasSearchData = bySearch.some((d) => (d.searchCount || 0) > 0);
+    const source = hasSearchData
+      ? bySearch
+      : await Device.find(filter)
+          .sort({ quizCount: -1, 'variants.0.basePrice': -1 })
+          .limit(limit)
+          .lean();
+
+    res.json(
+      source.map((d) => ({
+        label: d.modelName,
+        brand: d.brand,
+        slug: d.slug,
+        category: d.category,
+        imageUrl: d.imageUrl || '',
+        searchCount: d.searchCount || 0,
+        sellPath: `${CATEGORY_PATHS[d.category] || '/sell-old-mobile-phones'}/${String(d.brand || '').toLowerCase()}/${d.slug}`,
+      })),
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+/** Top mobiles by completed sell orders (leads). Fallback: most quoted / price. */
+export const getTopSellingMobiles = async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 10);
+    const Order = (await import("../models/Order.js")).default;
+
+    const popular = await Order.aggregate([
+      {
+        $match: {
+          status: "completed",
+          "device.category": "mobile",
+          "device.slug": { $exists: true, $ne: "" },
+        },
+      },
+      {
+        $group: {
+          _id: "$device.slug",
+          sellCount: { $sum: 1 },
+          brand: { $first: "$device.brand" },
+          modelName: { $first: "$device.modelName" },
+          storage: { $first: "$device.storage" },
+          ram: { $first: "$device.ram" },
+          maxFinal: { $max: "$priceBreakdown.finalPrice" },
+        },
+      },
+      { $sort: { sellCount: -1 } },
+      { $limit: limit },
+    ]);
+
+    const mapRow = (d, extras = {}) => {
+      const variants = d.variants || [];
+      const prices = variants.map((v) => v.basePrice).filter((n) => typeof n === "number");
+      const maxPrice = prices.length ? Math.max(...prices) : extras.maxFinal || 0;
+      const topVariant = variants
+        .slice()
+        .sort((a, b) => (b.basePrice || 0) - (a.basePrice || 0))[0];
+      const ram = extras.ram || topVariant?.ram || "";
+      const storage = extras.storage || topVariant?.storage || "";
+      return {
+        brand: d.brand || extras.brand || "",
+        modelName: d.modelName || extras.modelName || "",
+        slug: d.slug,
+        imageUrl: d.imageUrl || "",
+        ram,
+        storage,
+        maxPrice,
+        sellCount: extras.sellCount || 0,
+        sellPath: `${CATEGORY_PATHS.mobile}/${String(d.brand || extras.brand || "").toLowerCase()}/${d.slug}`,
+      };
+    };
+
+    if (popular.length) {
+      const slugs = popular.map((p) => p._id);
+      const devices = await Device.find({
+        isActive: true,
+        category: "mobile",
+        slug: { $in: slugs },
+      }).lean();
+      const bySlug = Object.fromEntries(devices.map((d) => [d.slug, d]));
+      const rows = popular
+        .map((p) => {
+          const d = bySlug[p._id];
+          if (!d) return null;
+          return mapRow(d, {
+            sellCount: p.sellCount,
+            brand: p.brand,
+            modelName: p.modelName,
+            storage: p.storage,
+            ram: p.ram,
+            maxFinal: p.maxFinal,
+          });
+        })
+        .filter(Boolean);
+      if (rows.length) return res.json(rows);
+    }
+
+    // Fallback: quiz / price ranked mobiles
+    const fallback = await Device.find({ isActive: true, category: "mobile" })
+      .sort({ quizCount: -1, "variants.0.basePrice": -1 })
+      .limit(limit)
+      .lean();
+    res.json(fallback.map((d) => mapRow(d, { sellCount: d.quizCount || 0 })));
   } catch (error) {
     next(error);
   }
