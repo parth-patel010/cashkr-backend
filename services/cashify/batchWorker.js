@@ -5,9 +5,9 @@ import User from '../../models/User.js';
 import Order from '../../models/Order.js';
 import config, { buildCashifyProductUrlCandidates } from '../../config/cashify.js';
 import { findCompletedByHash, serializePricingRecord } from '../../utils/pricingQuizService.js';
-import { orderDeviceToQuizPayload } from '../../utils/orderDeviceToQuizPayload.js';
 import { upsertPricingQuizRecord } from '../../utils/pricingQuizService.js';
-import { hasFilledQuizFromSource, pricingAgentEligibleFilter } from '../../utils/quizFilled.js';
+import { hasFilledQuizFromSource, hasMeaningfulQuizSummary, pricingAgentEligibleFilter } from '../../utils/quizFilled.js';
+import { buildQuizSummaryFromPayload } from '../../utils/buildQuizSummary.js';
 
 const POLL_MS = 5000;
 let workerTimer = null;
@@ -242,7 +242,12 @@ export async function syncPricingRecordsFromSources() {
     const d = user.lastQuizDevice;
     const quizPayload = d.quizPayload || d.answers || buildQuizFromLastDevice(d);
     if (!quizPayload?.slug && !d.slug) continue;
-    if (!hasFilledQuizFromSource(quizPayload, d.answerSummary, d.category)) continue;
+    let summary = d.answerSummary || [];
+    if (!hasMeaningfulQuizSummary(summary)) {
+      summary = buildQuizSummaryFromPayload({ ...quizPayload, slug: d.slug }, d.category);
+    }
+    if (!hasMeaningfulQuizSummary(summary)) continue;
+    if (!hasFilledQuizFromSource(quizPayload, summary, d.category)) continue;
     const record = await upsertPricingQuizRecord({
       slug: d.slug,
       category: d.category,
@@ -250,7 +255,7 @@ export async function syncPricingRecordsFromSources() {
       modelName: d.modelName,
       storage: d.storage,
       quizPayload: { ...quizPayload, slug: d.slug },
-      quizSummary: d.answerSummary || [],
+      quizSummary: summary,
       sourceType: 'backfill',
       sourceId: String(user._id),
     });
@@ -263,9 +268,14 @@ export async function syncPricingRecordsFromSources() {
   }).select('device orderId').lean();
 
   for (const order of orders) {
-    const quizPayload = orderDeviceToQuizPayload(order.device);
-    if (!quizPayload) continue;
-    if (!hasFilledQuizFromSource(quizPayload, order.device.answerSummary, order.device.category)) continue;
+    const quizPayload = order.device;
+    if (!quizPayload?.slug) continue;
+    let summary = order.device.answerSummary || [];
+    if (!hasMeaningfulQuizSummary(summary)) {
+      summary = buildQuizSummaryFromPayload(quizPayload, order.device.category);
+    }
+    if (!hasMeaningfulQuizSummary(summary)) continue;
+    if (!hasFilledQuizFromSource(quizPayload, summary, order.device.category)) continue;
     const record = await upsertPricingQuizRecord({
       slug: order.device.slug,
       category: order.device.category,
@@ -273,7 +283,7 @@ export async function syncPricingRecordsFromSources() {
       modelName: order.device.modelName,
       storage: order.device.storage,
       quizPayload,
-      quizSummary: order.device.answerSummary || [],
+      quizSummary: summary,
       sourceType: 'order',
       sourceId: order.orderId,
     });

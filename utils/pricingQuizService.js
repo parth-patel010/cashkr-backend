@@ -4,7 +4,8 @@ import { calculateLaptopPrice } from './laptopPriceCalculator.js';
 import { calculateMobilePrice } from './mobilePriceCalculator.js';
 import { hashQuizPayload } from './quizHash.js';
 import { normalizeQuizForCategory } from './quizNormalize.js';
-import { hasFilledQuizFromSource } from './quizFilled.js';
+import { hasFilledQuizFromSource, hasMeaningfulQuizSummary } from './quizFilled.js';
+import { buildQuizSummaryFromPayload } from './buildQuizSummary.js';
 
 function resolveVariantBasePrice(device, storage, ram) {
   const variants = device.variants || [];
@@ -112,6 +113,12 @@ export async function upsertPricingQuizRecord({
   const normalized = normalizeQuizForCategory({ ...quizPayload, slug }, category);
   if (!normalized) return null;
 
+  let summary = Array.isArray(quizSummary) ? quizSummary : [];
+  if (!hasMeaningfulQuizSummary(summary)) {
+    summary = buildQuizSummaryFromPayload({ ...quizPayload, ...normalized }, category);
+  }
+  if (!hasMeaningfulQuizSummary(summary)) return null;
+
   const quizHash = hashQuizPayload(normalized);
   const device = await Device.findOne({ slug, isActive: true });
   if (!device) return null;
@@ -131,7 +138,7 @@ export async function upsertPricingQuizRecord({
     modelName: modelName || device.modelName,
     storage: storage || normalized.storage || '',
     quizPayload: normalized,
-    quizSummary: Array.isArray(quizSummary) ? quizSummary : [],
+    quizSummary: summary,
     sourceType,
     sourceId: String(sourceId || ''),
     internalPrice,

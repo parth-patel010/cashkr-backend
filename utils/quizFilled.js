@@ -28,8 +28,6 @@ const LAPTOP_CONDITION_KEYS = [
   'yearBracket',
   'age',
   'yearOfPurchase',
-  'processor',
-  'ram',
   'issuesList',
   'screenIssuesList',
   'bodyIssuesList',
@@ -45,12 +43,19 @@ function payloadHasConditionAnswers(payload = {}, keys = []) {
   });
 }
 
+export function hasMeaningfulQuizSummary(quizSummary = []) {
+  return Array.isArray(quizSummary)
+    && quizSummary.some((row) => row
+      && String(row.question || '').trim()
+      && String(row.answer ?? '').trim() !== '');
+}
+
 /**
  * True when the record has real quiz answers worth running the Cashify agent on.
  * Uses raw/source payload — not normalized defaults.
  */
 export function hasFilledQuizFromSource(quizPayload = {}, quizSummary = [], category) {
-  if (Array.isArray(quizSummary) && quizSummary.length > 0) return true;
+  if (hasMeaningfulQuizSummary(quizSummary)) return true;
 
   const payload = quizPayload && typeof quizPayload === 'object' ? quizPayload : {};
   const extraKeys = Object.keys(payload).filter((k) => !IDENTITY_KEYS.has(k));
@@ -65,13 +70,14 @@ export function hasFilledQuizFromSource(quizPayload = {}, quizSummary = [], cate
   return false;
 }
 
-/** Mongo filter: records eligible for the pricing agent UI / worker. */
+/** Mongo filter: only records with readable quiz Q&A for the agent UI / worker. */
 export function pricingAgentEligibleFilter() {
   return {
-    $or: [
-      { hasFilledQuiz: true },
-      { 'quizSummary.0': { $exists: true } },
-      { sourceType: 'order' },
-    ],
+    quizSummary: {
+      $elemMatch: {
+        question: { $nin: [null, ''] },
+        answer: { $nin: [null, ''] },
+      },
+    },
   };
 }
