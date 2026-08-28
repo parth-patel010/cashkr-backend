@@ -7,6 +7,7 @@ import config, { buildCashifyProductUrlCandidates } from '../../config/cashify.j
 import { findCompletedByHash, serializePricingRecord } from '../../utils/pricingQuizService.js';
 import { orderDeviceToQuizPayload } from '../../utils/orderDeviceToQuizPayload.js';
 import { upsertPricingQuizRecord } from '../../utils/pricingQuizService.js';
+import { hasFilledQuizFromSource, pricingAgentEligibleFilter } from '../../utils/quizFilled.js';
 
 const POLL_MS = 5000;
 let workerTimer = null;
@@ -146,7 +147,7 @@ async function workerTick() {
   workerRunning = true;
   try {
     const record = await PricingQuizRecord.findOneAndUpdate(
-      { agentStatus: 'pending' },
+      { agentStatus: 'pending', ...pricingAgentEligibleFilter() },
       { $set: { agentStatus: 'running', runAt: new Date() } },
       { sort: { createdAt: 1 }, new: true },
     );
@@ -190,6 +191,7 @@ export async function enqueueAllPending() {
 
   const all = await PricingQuizRecord.find({
     agentStatus: { $nin: ['completed', 'partial', 'skipped'] },
+    ...pricingAgentEligibleFilter(),
   });
 
   for (const record of all) {
@@ -211,9 +213,13 @@ export async function enqueueAllPending() {
     }
   }
 
-  const alreadyPending = await PricingQuizRecord.countDocuments({ agentStatus: 'pending' });
+  const alreadyPending = await PricingQuizRecord.countDocuments({
+    agentStatus: 'pending',
+    ...pricingAgentEligibleFilter(),
+  });
   const alreadyCompleted = await PricingQuizRecord.countDocuments({
     agentStatus: { $in: ['completed', 'partial'] },
+    ...pricingAgentEligibleFilter(),
   });
 
   return {
@@ -236,6 +242,7 @@ export async function syncPricingRecordsFromSources() {
     const d = user.lastQuizDevice;
     const quizPayload = d.quizPayload || d.answers || buildQuizFromLastDevice(d);
     if (!quizPayload?.slug && !d.slug) continue;
+    if (!hasFilledQuizFromSource(quizPayload, d.answerSummary, d.category)) continue;
     const record = await upsertPricingQuizRecord({
       slug: d.slug,
       category: d.category,
@@ -258,6 +265,7 @@ export async function syncPricingRecordsFromSources() {
   for (const order of orders) {
     const quizPayload = orderDeviceToQuizPayload(order.device);
     if (!quizPayload) continue;
+    if (!hasFilledQuizFromSource(quizPayload, order.device.answerSummary, order.device.category)) continue;
     const record = await upsertPricingQuizRecord({
       slug: order.device.slug,
       category: order.device.category,

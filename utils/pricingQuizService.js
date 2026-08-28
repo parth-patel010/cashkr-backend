@@ -4,6 +4,7 @@ import { calculateLaptopPrice } from './laptopPriceCalculator.js';
 import { calculateMobilePrice } from './mobilePriceCalculator.js';
 import { hashQuizPayload } from './quizHash.js';
 import { normalizeQuizForCategory } from './quizNormalize.js';
+import { hasFilledQuizFromSource } from './quizFilled.js';
 
 function resolveVariantBasePrice(device, storage, ram) {
   const variants = device.variants || [];
@@ -105,6 +106,9 @@ export async function upsertPricingQuizRecord({
   const allowed = ['mobile', 'laptop', 'mac'];
   if (!allowed.includes(category)) return null;
 
+  const filled = hasFilledQuizFromSource(quizPayload, quizSummary, category);
+  if (!filled) return null;
+
   const normalized = normalizeQuizForCategory({ ...quizPayload, slug }, category);
   if (!normalized) return null;
 
@@ -132,6 +136,7 @@ export async function upsertPricingQuizRecord({
     sourceId: String(sourceId || ''),
     internalPrice,
     capturedAt: new Date(),
+    hasFilledQuiz: true,
   };
 
   if (existingCompleted) {

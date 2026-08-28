@@ -1,5 +1,6 @@
 import PricingQuizRecord from '../models/PricingQuizRecord.js';
 import { serializePricingRecord } from '../utils/pricingQuizService.js';
+import { pricingAgentEligibleFilter } from '../utils/quizFilled.js';
 import {
   buildPricingRecordsWorkbook,
   buildPricingRecordsCsv,
@@ -13,9 +14,10 @@ import {
 
 export const getPricingAgentStats = async (req, res, next) => {
   try {
+    const baseFilter = pricingAgentEligibleFilter();
     const statuses = ['pending', 'running', 'completed', 'partial', 'failed', 'skipped'];
     const counts = await Promise.all(
-      statuses.map((s) => PricingQuizRecord.countDocuments({ agentStatus: s })),
+      statuses.map((s) => PricingQuizRecord.countDocuments({ ...baseFilter, agentStatus: s })),
     );
     const stats = Object.fromEntries(statuses.map((s, i) => [s, counts[i]]));
     stats.total = counts.reduce((a, b) => a + b, 0);
@@ -30,7 +32,7 @@ export const getPricingAgentRecords = async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const skip = (page - 1) * limit;
-    const filter = {};
+    const filter = { ...pricingAgentEligibleFilter() };
     if (req.query.status) filter.agentStatus = req.query.status;
     if (req.query.category) filter.category = req.query.category;
 
@@ -73,7 +75,7 @@ export const exportPricingAgent = async (req, res, next) => {
   try {
     const format = String(req.query.format || 'xlsx').toLowerCase();
     const limit = Math.min(Number(req.query.limit) || 5000, 10000);
-    const records = await PricingQuizRecord.find()
+    const records = await PricingQuizRecord.find(pricingAgentEligibleFilter())
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();

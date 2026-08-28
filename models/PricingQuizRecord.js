@@ -32,6 +32,7 @@ const pricingQuizRecordSchema = new mongoose.Schema({
   capturedAt: { type: Date, default: Date.now },
   runAt: { type: Date, default: null },
   completedAt: { type: Date, default: null },
+  hasFilledQuiz: { type: Boolean, default: false, index: true },
 }, {
   timestamps: true,
 });
