@@ -54,7 +54,7 @@ const slugify = (name) =>
     .replace(/(^-|-$)/g, '');
 
 async function run() {
-  await connectDB();
+  await connectDB({ exitOnFailure: true });
 
   const devices = await Device.find({ isActive: true }).select('brand category').lean();
   const bySlug = new Map();

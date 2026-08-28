@@ -45,7 +45,7 @@ const BRANDS = [
 ];
 
 async function run() {
-  await connectDB();
+  await connectDB({ exitOnFailure: true });
 
   let created = 0;
   let updated = 0;
