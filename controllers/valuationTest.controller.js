@@ -26,7 +26,15 @@ async function getCashifyServices() {
   }
 }
 
-function yesNoToBool(val) {
+function cleanPlaywrightError(message) {
+  return String(message || '')
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' ');
+}
   if (val === true || val === false) return val;
   if (val === 'yes') return true;
   if (val === 'no') return false;
@@ -319,18 +327,20 @@ export const runValuationTestQuote = async (req, res, next) => {
             note: flowResult.note || null,
             debugArtifacts: flowResult.debugArtifacts || null,
           };
-          if (flowResult.loginRequired) status = 'partial';
+          if (flowResult.loginRequired || flowResult.note) status = 'partial';
         } catch (flowError) {
+          const msg = cleanPlaywrightError(flowError.message);
           cashifyResult = {
             supported: true,
             productUrl,
-            cashifyPrice: null,
-            ourOffer: null,
-            error: flowError.message,
+            cashifyPrice: flowError.cashifyPrice || null,
+            ourOffer: flowError.cashifyPrice ? flowError.cashifyPrice + config.MARKUP_INR : null,
+            error: msg,
+            note: flowError.note || null,
             debugArtifacts: flowError.debugArtifacts || null,
           };
-          status = 'partial';
-          error = flowError.message;
+          status = flowError.cashifyPrice ? 'partial' : 'partial';
+          error = msg;
         }
       }
     }

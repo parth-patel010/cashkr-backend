@@ -161,16 +161,97 @@ async function clickContinue(page) {
   return pageIdFromUrl(page.url()) !== beforeId || page.url() !== before;
 }
 
-async function startCalculator(page) {
-  try {
-    await page.getByRole('button', { name: /get exact value/i }).first().click({ timeout: 8000 });
-  } catch {
-    await page.locator('text=Get Exact Value').first().click({ timeout: 8000, force: true });
+async function dismissBlockingOverlays(page) {
+  const accept = page.getByRole('button', { name: /accept all|accept|agree|got it|allow all|i agree/i });
+  if (await accept.count()) {
+    await accept.first().click({ force: true, timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(400);
   }
-  await page.waitForURL(/sell\/calculator|pageId=/, { timeout: 20000 });
+}
+
+async function startCalculator(page) {
+  if (/sell\/calculator|pageId=/.test(page.url())) {
+    return;
+  }
+
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+  await dismissBlockingOverlays(page);
+
+  const bodyText = await page.locator('body').innerText().catch(() => '');
+
+  if (/page not found|404|something went wrong|no longer available/i.test(bodyText)) {
+    throw new Error(`Cashify product page not found (${page.url()}). Set the correct cashifyProductUrl on this device.`);
+  }
+
+  const clickStrategies = [
+    async () => page.getByRole('button', { name: /get exact value/i }).first().click({ timeout: 6000, force: true }),
+    async () => page.getByRole('link', { name: /get exact value/i }).first().click({ timeout: 6000, force: true }),
+    async () => page.locator('text=/get exact value/i').first().click({ timeout: 6000, force: true }),
+    async () => page.locator('a[href*="calculator"], a[href*="pageId="]').first().click({ timeout: 6000, force: true }),
+    async () => {
+      const clicked = await page.evaluate(() => {
+        const nodes = [...document.querySelectorAll('a, button, div, span, p')];
+        const target = nodes.find((n) => /get exact value/i.test(String(n.innerText || n.textContent || '').trim()));
+        if (!target) return false;
+        target.scrollIntoView({ block: 'center', inline: 'center' });
+        target.click();
+        return true;
+      });
+      if (!clicked) throw new Error('evaluate click missed');
+    },
+  ];
+
+  let opened = false;
+  for (const strategy of clickStrategies) {
+    const before = page.url();
+    try {
+      await strategy();
+      await page.waitForTimeout(1500);
+      if (/sell\/calculator|pageId=/.test(page.url())) {
+        opened = true;
+        break;
+      }
+      if (page.url() !== before) {
+        opened = true;
+        break;
+      }
+    } catch {
+      // try next strategy
+    }
+  }
+
+  if (!opened) {
+    const calcHref = await page.evaluate(() => {
+      const link = [...document.querySelectorAll('a')].find((el) => {
+        const href = el.getAttribute('href') || '';
+        return /calculator|pageId=/.test(href);
+      });
+      return link?.href || null;
+    });
+    if (calcHref) {
+      await page.goto(calcHref, { waitUntil: 'domcontentloaded' });
+      opened = true;
+    }
+  }
+
+  try {
+    await page.waitForURL(/sell\/calculator|pageId=/, { timeout: 20000 });
+  } catch {
+    // fall through to validation below
+  }
+
   await page.waitForTimeout(1200);
+
   if (!/calculator|pageId=/.test(page.url())) {
-    throw new Error('Could not open the valuation calculator.');
+    const hasExact = /get exact value/i.test(bodyText);
+    if (hasExact) {
+      throw new Error('Cashify showed "Get Exact Value" but the calculator did not open. Try reconnecting Cashify or run with CASHIFY_HEADLESS=false on the server.');
+    }
+    throw new Error(
+      `No "Get Exact Value" on this Cashify page (${page.url()}). The auto URL may be wrong — add cashifyProductUrl for this model in Device Catalog.`,
+    );
   }
 }
 
@@ -430,9 +511,27 @@ export async function runLaptopFlow(quiz, { productUrl, modelName = '' } = {}) {
 
   try {
     await page.goto(productUrl, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
     productMaxPrice = parseRupees(await page.locator('body').innerText());
-    await startCalculator(page);
+    try {
+      await startCalculator(page);
+    } catch (startError) {
+      await saveDebug(page, 'calculator-start-failed', screenshotDir);
+      if (productMaxPrice) {
+        return {
+          cashifyPrice: productMaxPrice,
+          loginRequired: false,
+          usedSession: usingSession,
+          note: `${startError.message} Showing public Get Upto price as fallback.`,
+          debugArtifacts: {
+            ...debugArtifacts,
+            startCalculatorError: startError.message,
+            productUrl,
+          },
+        };
+      }
+      throw startError;
+    }
 
     let lastPageId = pageIdFromUrl(page.url());
     let stuck = 0;
