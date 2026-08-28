@@ -33,19 +33,25 @@ export function buildCashifyProductUrlCandidates(device) {
   const slug = String(device.slug || '').trim();
   if (!slug) return [];
 
-  const base = device.category === 'mobile'
-    ? 'https://www.cashify.in/sell-old-mobile-phones/used-'
+  const basePaths = device.category === 'mobile'
+    ? [
+      'https://www.cashify.in/sell-old-mobile-phone/used-',
+      'https://www.cashify.in/sell-old-mobile-phones/used-',
+    ]
     : device.category === 'laptop' || device.category === 'mac'
-      ? 'https://www.cashify.in/sell-old-laptop/used-'
-      : '';
+      ? ['https://www.cashify.in/sell-old-laptop/used-']
+      : [];
 
-  if (!base) return [];
+  if (!basePaths.length) return [];
 
-  const candidates = [base + slug];
-  const brandKey = brandSlugKey(device.brand);
-  if (brandKey && slug.startsWith(`${brandKey}-`)) {
-    const stripped = slug.slice(brandKey.length + 1);
-    if (stripped) candidates.push(base + stripped);
+  const candidates = [];
+  for (const base of basePaths) {
+    candidates.push(base + slug);
+    const brandKey = brandSlugKey(device.brand);
+    if (brandKey && slug.startsWith(`${brandKey}-`)) {
+      const stripped = slug.slice(brandKey.length + 1);
+      if (stripped) candidates.push(base + stripped);
+    }
   }
 
   return [...new Set(candidates)];

@@ -68,3 +68,58 @@ export function classifyQuestion(text) {
   if (/switch on\?/.test(q)) return 'power';
   return 'unknown';
 }
+
+export const MOBILE_AGE = {
+  '0 - 3 Months': '0 - 3 Months',
+  '3 - 6 Months': '3 - 6 Months',
+  '6 - 11 Months': '6 - 11 Months',
+  'Above 11 Months': 'Above 11 Months',
+};
+
+export const MOBILE_PHYSICAL_LABELS = {
+  glass_crack: 'Glass Crack',
+  back_panel: 'Back Panel Damage',
+  camera_glass_broken: 'Camera Glass Broken',
+};
+
+export const MOBILE_TECHNICAL_LABELS = {
+  battery_service: 'Battery Warning',
+  front_camera: 'Front Camera faulty',
+  back_camera: 'Back Camera faulty',
+  volume_button: 'Volume button issue',
+  wifi_issue: 'Wifi issue',
+  finger_touch: 'Finger touch issue',
+  face_unlock: 'Face unlock issue',
+  speaker_faulty: 'Speaker faulty',
+  power_button: 'Power button issue',
+  charging_port: 'Charging port issue',
+  audio_receiver: 'Audio receiver issue',
+  bluetooth: 'Bluetooth issue',
+  vibrator: 'Vibrator issue',
+  microphone: 'Microphone issue',
+  proximity_sensor: 'Proximity sensor',
+};
+
+export function classifyMobileQuestion(text) {
+  const q = String(text || '').toLowerCase();
+  if (/choose a variant|select variant|pick a variant|select storage|choose storage/.test(q)) return 'variant';
+  if (/age of your (mobile|phone|device)|device age|how old is|purchase date|0 - 3 month|above 11 month/.test(q)) {
+    return 'age';
+  }
+  if (/under warranty|valid warranty|warranty status|in warranty|device under warranty/.test(q)) return 'warranty';
+  if (/make and receive calls|able to make calls|calls working|receive calls/.test(q)) return 'calls';
+  if (/touch screen|touchscreen|touch working|touch functionality/.test(q)) return 'touchscreen';
+  if (/original screen|screen replaced|duplicate screen|copy screen/.test(q)) return 'screenOriginal';
+  if (/glass crack|back panel|camera glass|physical condition|body condition|external damage/.test(q)) {
+    return 'physical';
+  }
+  if (/battery|front camera|back camera|volume button|wifi|finger|face unlock|speaker|power button|charging port|audio receiver|bluetooth|vibrator|microphone|proximity|technical issue|functional issue|working condition/.test(q)) {
+    return 'technical';
+  }
+  if (/accessories|original box|original charger|valid bill|gst bill|bill available|do you have the following/.test(q)) {
+    return 'accessories';
+  }
+  if (/esim|e-sim|sim support|physical sim/.test(q)) return 'esim';
+  if (/switch on|turns on|power on|device switch/.test(q)) return 'power';
+  return 'unknown';
+}

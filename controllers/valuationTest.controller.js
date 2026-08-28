@@ -3,13 +3,15 @@ import AgentTestRun from '../models/AgentTestRun.js';
 import config, { buildCashifyProductUrlCandidates } from '../config/cashify.js';
 import { calculateLaptopPrice } from '../utils/laptopPriceCalculator.js';
 import { calculateMobilePrice } from '../utils/mobilePriceCalculator.js';
+import { buildAgentTestRunsWorkbook, serializeAgentTestRuns } from '../utils/agentTestRunExport.js';
 
 /** Lazy-load Playwright stack so the rest of the API keeps running if it is missing on the VPS. */
 async function getCashifyServices() {
   try {
-    const [session, flow] = await Promise.all([
+    const [session, laptop, mobile] = await Promise.all([
       import('../services/cashify/sessionManager.js'),
       import('../services/cashify/laptopFlow.js'),
+      import('../services/cashify/mobileFlow.js'),
     ]);
     return {
       getStatus: session.getStatus,
@@ -17,7 +19,8 @@ async function getCashifyServices() {
       requestOtp: session.requestOtp,
       verifyOtp: session.verifyOtp,
       logoutCashify: session.logoutCashify,
-      runLaptopFlow: flow.runLaptopFlow,
+      runLaptopFlow: laptop.runLaptopFlow,
+      runMobileFlow: mobile.runMobileFlow,
     };
   } catch (error) {
     throw new Error(
@@ -290,16 +293,7 @@ export const runValuationTestQuote = async (req, res, next) => {
     let status = 'completed';
     let error = null;
 
-    if (category === 'mobile') {
-      cashifyResult = {
-        supported: false,
-        message: 'Cashify agent not yet supported for mobile in v1.',
-        cashifyPrice: null,
-        ourOffer: null,
-        loginRequired: false,
-      };
-      status = 'partial';
-    } else if (category === 'laptop' || category === 'mac') {
+    if (category === 'mobile' || category === 'laptop' || category === 'mac') {
       const productUrls = buildCashifyProductUrlCandidates(device);
       const productUrl = productUrls[0] || '';
       if (!productUrl) {
@@ -312,8 +306,9 @@ export const runValuationTestQuote = async (req, res, next) => {
         status = 'partial';
       } else {
         try {
-          const { runLaptopFlow } = await getCashifyServices();
-          const flowResult = await runLaptopFlow(quizPayload, {
+          const { runLaptopFlow, runMobileFlow } = await getCashifyServices();
+          const runFlow = category === 'mobile' ? runMobileFlow : runLaptopFlow;
+          const flowResult = await runFlow(quizPayload, {
             productUrls,
             modelName: device.modelName,
           });
@@ -423,28 +418,19 @@ export const runValuationTestQuote = async (req, res, next) => {
 
 export const getLastAgentRun = async (req, res, next) => {
   try {
-    const run = await AgentTestRun.findOne().sort({ createdAt: -1 }).lean();
-    if (!run) {
-      return res.json({ run: null, message: 'No agent test runs yet.' });
+    const limit = Math.min(Number(req.query.limit) || 200, 500);
+    const runs = await AgentTestRun.find()
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    if (!runs.length) {
+      return res.json({ runs: [], total: 0, message: 'No agent test runs yet.' });
     }
+
     res.json({
-      run: {
-        id: run._id,
-        category: run.category,
-        brand: run.brand,
-        modelName: run.modelName,
-        slug: run.slug,
-        storage: run.storage,
-        status: run.status,
-        comparison: run.comparison,
-        internalResult: run.internalResult,
-        cashifyResult: run.cashifyResult,
-        quizPayload: run.quizPayload,
-        runBy: run.runBy,
-        durationMs: run.durationMs,
-        error: run.error,
-        createdAt: run.createdAt,
-      },
+      runs: serializeAgentTestRuns(runs),
+      total: runs.length,
     });
   } catch (error) {
     next(error);
@@ -453,14 +439,21 @@ export const getLastAgentRun = async (req, res, next) => {
 
 export const downloadLastAgentRun = async (req, res, next) => {
   try {
-    const run = await AgentTestRun.findOne().sort({ createdAt: -1 }).lean();
-    if (!run) {
+    const limit = Math.min(Number(req.query.limit) || 500, 1000);
+    const runs = await AgentTestRun.find()
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    if (!runs.length) {
       return res.status(404).json({ error: 'No agent test runs to download.' });
     }
-    const filename = `agent-run-${run.slug}-${new Date(run.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
-    res.setHeader('Content-Type', 'application/json');
+
+    const buffer = buildAgentTestRunsWorkbook(runs);
+    const filename = `agent-test-runs-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(JSON.stringify(run, null, 2));
+    res.send(buffer);
   } catch (error) {
     next(error);
   }
