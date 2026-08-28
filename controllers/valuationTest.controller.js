@@ -35,6 +35,8 @@ function cleanPlaywrightError(message) {
     .slice(0, 2)
     .join(' ');
 }
+
+function yesNoToBool(val) {
   if (val === true || val === false) return val;
   if (val === 'yes') return true;
   if (val === 'no') return false;
