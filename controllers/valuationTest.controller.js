@@ -1,6 +1,6 @@
 import Device from '../models/Device.js';
 import AgentTestRun from '../models/AgentTestRun.js';
-import config, { buildCashifyProductUrl } from '../config/cashify.js';
+import config, { buildCashifyProductUrlCandidates } from '../config/cashify.js';
 import { calculateLaptopPrice } from '../utils/laptopPriceCalculator.js';
 import { calculateMobilePrice } from '../utils/mobilePriceCalculator.js';
 
@@ -300,7 +300,8 @@ export const runValuationTestQuote = async (req, res, next) => {
       };
       status = 'partial';
     } else if (category === 'laptop' || category === 'mac') {
-      const productUrl = buildCashifyProductUrl(device);
+      const productUrls = buildCashifyProductUrlCandidates(device);
+      const productUrl = productUrls[0] || '';
       if (!productUrl) {
         cashifyResult = {
           supported: false,
@@ -313,15 +314,17 @@ export const runValuationTestQuote = async (req, res, next) => {
         try {
           const { runLaptopFlow } = await getCashifyServices();
           const flowResult = await runLaptopFlow(quizPayload, {
-            productUrl,
+            productUrls,
             modelName: device.modelName,
           });
+          const resolvedUrl = flowResult.productUrl || productUrl;
           const ourOffer = flowResult.cashifyPrice
             ? flowResult.cashifyPrice + config.MARKUP_INR
             : null;
           cashifyResult = {
             supported: true,
-            productUrl,
+            productUrl: resolvedUrl,
+            productUrlsTried: productUrls,
             cashifyPrice: flowResult.cashifyPrice,
             ourOffer,
             loginRequired: !!flowResult.loginRequired,
@@ -332,9 +335,11 @@ export const runValuationTestQuote = async (req, res, next) => {
           if (flowResult.loginRequired || flowResult.note) status = 'partial';
         } catch (flowError) {
           const msg = cleanPlaywrightError(flowError.message);
+          const resolvedUrl = flowError.productUrl || productUrl;
           cashifyResult = {
             supported: true,
-            productUrl,
+            productUrl: resolvedUrl,
+            productUrlsTried: productUrls,
             cashifyPrice: flowError.cashifyPrice || null,
             ourOffer: flowError.cashifyPrice ? flowError.cashifyPrice + config.MARKUP_INR : null,
             error: msg,

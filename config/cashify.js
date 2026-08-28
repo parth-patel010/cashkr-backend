@@ -19,15 +19,39 @@ export default {
   SCREENSHOT_DIR: path.join(sessionRoot, 'screenshots'),
 };
 
-export function buildCashifyProductUrl(device) {
-  if (device.cashifyProductUrl) return device.cashifyProductUrl;
+function brandSlugKey(brand) {
+  return String(brand || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/** Ordered URL candidates — Cashify often drops the brand prefix (e.g. used-g7-gaming-series). */
+export function buildCashifyProductUrlCandidates(device) {
+  if (device.cashifyProductUrl) return [device.cashifyProductUrl];
+
   const slug = String(device.slug || '').trim();
-  if (!slug) return '';
-  if (device.category === 'mobile') {
-    return `https://www.cashify.in/sell-old-mobile-phones/used-${slug}`;
+  if (!slug) return [];
+
+  const base = device.category === 'mobile'
+    ? 'https://www.cashify.in/sell-old-mobile-phones/used-'
+    : device.category === 'laptop' || device.category === 'mac'
+      ? 'https://www.cashify.in/sell-old-laptop/used-'
+      : '';
+
+  if (!base) return [];
+
+  const candidates = [base + slug];
+  const brandKey = brandSlugKey(device.brand);
+  if (brandKey && slug.startsWith(`${brandKey}-`)) {
+    const stripped = slug.slice(brandKey.length + 1);
+    if (stripped) candidates.push(base + stripped);
   }
-  if (device.category === 'laptop' || device.category === 'mac') {
-    return `https://www.cashify.in/sell-old-laptop/used-${slug}`;
-  }
-  return '';
+
+  return [...new Set(candidates)];
+}
+
+export function buildCashifyProductUrl(device) {
+  const candidates = buildCashifyProductUrlCandidates(device);
+  return candidates[0] || '';
 }

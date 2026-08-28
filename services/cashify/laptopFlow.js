@@ -474,8 +474,42 @@ async function extractVisibleOffer(page) {
 
 let quoteBusy = false;
 
-export async function runLaptopFlow(quiz, { productUrl, modelName = '' } = {}) {
-  if (!productUrl) {
+async function pageLooksLikeProductListing(page) {
+  const text = await page.locator('body').innerText().catch(() => '');
+  if (/page not found|404|something went wrong|no longer available/i.test(text)) return false;
+  return /get exact value|get upto/i.test(text);
+}
+
+async function openProductPage(page, productUrls) {
+  const urls = [...new Set((productUrls || []).filter(Boolean))];
+  if (!urls.length) {
+    throw new Error('Cashify product URL is required for laptop valuation.');
+  }
+
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(2000);
+      if (await pageLooksLikeProductListing(page)) {
+        return { productUrl: url, productMaxPrice: parseRupees(await page.locator('body').innerText()) };
+      }
+      lastError = new Error(`Cashify page loaded but has no product quote UI (${url}).`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error(`Could not open a valid Cashify product page. Tried: ${urls.join(', ')}`);
+}
+
+export async function runLaptopFlow(quiz, { productUrl, productUrls, modelName = '' } = {}) {
+  const urls = productUrls?.length
+    ? productUrls
+    : productUrl
+      ? [productUrl]
+      : [];
+  if (!urls.length) {
     throw new Error('Cashify product URL is required for laptop valuation.');
   }
   if (quoteBusy) {
@@ -489,6 +523,7 @@ export async function runLaptopFlow(quiz, { productUrl, modelName = '' } = {}) {
   let apiPrice = null;
   const apiBodies = [];
   const debugArtifacts = { steps: [], screenshots: [] };
+  let resolvedProductUrl = urls[0];
   let productMaxPrice = null;
   const sessionMeta = readMeta();
   const usingSession = sessionMeta.status === 'connected';
@@ -510,9 +545,12 @@ export async function runLaptopFlow(quiz, { productUrl, modelName = '' } = {}) {
   });
 
   try {
-    await page.goto(productUrl, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
-    productMaxPrice = parseRupees(await page.locator('body').innerText());
+    const opened = await openProductPage(page, urls);
+    resolvedProductUrl = opened.productUrl;
+    productMaxPrice = opened.productMaxPrice;
+    debugArtifacts.productUrlsTried = urls;
+    debugArtifacts.resolvedProductUrl = resolvedProductUrl;
+
     try {
       await startCalculator(page);
     } catch (startError) {
@@ -523,10 +561,10 @@ export async function runLaptopFlow(quiz, { productUrl, modelName = '' } = {}) {
           loginRequired: false,
           usedSession: usingSession,
           note: `${startError.message} Showing public Get Upto price as fallback.`,
+          productUrl: resolvedProductUrl,
           debugArtifacts: {
             ...debugArtifacts,
             startCalculatorError: startError.message,
-            productUrl,
           },
         };
       }
@@ -606,13 +644,13 @@ export async function runLaptopFlow(quiz, { productUrl, modelName = '' } = {}) {
     if (cashifyPrice && !loginLocked) {
       const artifact = await saveDebug(page, 'success', screenshotDir);
       if (artifact) debugArtifacts.screenshots.push(artifact);
-      return { cashifyPrice, loginRequired: false, usedSession: usingSession, debugArtifacts };
+      return { cashifyPrice, loginRequired: false, usedSession: usingSession, productUrl: resolvedProductUrl, debugArtifacts };
     }
 
     if (cashifyPrice && usingSession && !/xx,xxx/i.test(finalText)) {
       const artifact = await saveDebug(page, 'success', screenshotDir);
       if (artifact) debugArtifacts.screenshots.push(artifact);
-      return { cashifyPrice, loginRequired: false, usedSession: true, debugArtifacts };
+      return { cashifyPrice, loginRequired: false, usedSession: true, productUrl: resolvedProductUrl, debugArtifacts };
     }
 
     if (loginLocked) {
@@ -623,6 +661,7 @@ export async function runLaptopFlow(quiz, { productUrl, modelName = '' } = {}) {
           cashifyPrice: productMaxPrice,
           loginRequired: true,
           usedSession: usingSession,
+          productUrl: resolvedProductUrl,
           note: usingSession
             ? 'Session may have expired. Reconnect Cashify OTP, then try again. Showing Get Upto for now.'
             : 'Exact Cashify quote is locked behind OTP login. Connect Cashify first, then retry. Showing public Get Upto for now.',
