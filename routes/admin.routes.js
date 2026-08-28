@@ -77,6 +77,18 @@ import {
   adminDeleteCategoryQuiz,
 } from '../controllers/categoryQuiz.controller.js';
 import {
+  getValuationTestModels,
+  getValuationTestDevices,
+  cashifyStatus,
+  cashifyVerifySession,
+  cashifyRequestOtp,
+  cashifyVerifyOtp,
+  cashifyLogout,
+  runValuationTestQuote,
+  getLastAgentRun,
+  downloadLastAgentRun,
+} from '../controllers/valuationTest.controller.js';
+import {
   adminListNotifications,
   adminSendNotification,
 } from '../controllers/notification.controller.js';
@@ -232,5 +244,17 @@ router.post('/notifications/send', adminSendNotification);
 
 // Security audit
 router.get('/security-audit', adminSecurityAudit);
+
+// Valuation test (Cashify agent sandbox)
+router.get('/valuation-test/models', getValuationTestModels);
+router.get('/valuation-test/devices', getValuationTestDevices);
+router.get('/valuation-test/cashify/status', cashifyStatus);
+router.post('/valuation-test/cashify/verify-session', cashifyVerifySession);
+router.post('/valuation-test/cashify/request-otp', cashifyRequestOtp);
+router.post('/valuation-test/cashify/verify-otp', cashifyVerifyOtp);
+router.post('/valuation-test/cashify/logout', cashifyLogout);
+router.post('/valuation-test/quote', runValuationTestQuote);
+router.get('/valuation-test/last-run', getLastAgentRun);
+router.get('/valuation-test/last-run/download', downloadLastAgentRun);
 
 export default router;

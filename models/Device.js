@@ -196,6 +196,12 @@ const deviceSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+
+  /** Optional override for Cashify product page URL (Playwright agent) */
+  cashifyProductUrl: {
+    type: String,
+    default: '',
+  },
 }, {
   timestamps: true,
 });
