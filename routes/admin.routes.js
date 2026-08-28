@@ -92,6 +92,13 @@ import {
   adminListNotifications,
   adminSendNotification,
 } from '../controllers/notification.controller.js';
+import {
+  getPricingAgentStats,
+  getPricingAgentRecords,
+  syncPricingAgent,
+  runAllPricingAgent,
+  exportPricingAgent,
+} from '../controllers/pricingAgent.controller.js';
 import { adminSecurityAudit } from '../controllers/security.controller.js';
 
 import {
@@ -256,5 +263,12 @@ router.post('/valuation-test/cashify/logout', cashifyLogout);
 router.post('/valuation-test/quote', runValuationTestQuote);
 router.get('/valuation-test/last-run', getLastAgentRun);
 router.get('/valuation-test/last-run/download', downloadLastAgentRun);
+
+// Pricing agent (Cashify batch worker)
+router.get('/pricing-agent/stats', getPricingAgentStats);
+router.get('/pricing-agent/records', getPricingAgentRecords);
+router.post('/pricing-agent/sync', syncPricingAgent);
+router.post('/pricing-agent/run-all', runAllPricingAgent);
+router.get('/pricing-agent/export', exportPricingAgent);
 
 export default router;

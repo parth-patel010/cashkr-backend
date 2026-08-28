@@ -4,6 +4,7 @@ import UserNotification from '../models/UserNotification.js';
 import { validationResult } from 'express-validator';
 import { maskPaymentMethods } from '../utils/maskPayment.js';
 import { ensureAppSettings } from './appSettings.controller.js';
+import { upsertPricingQuizRecord } from '../utils/pricingQuizService.js';
 
 const DEFAULT_REFERRAL_BONUS = 100;
 
@@ -80,6 +81,7 @@ export const reportLastQuiz = async (req, res, next) => {
       quizPath,
       answerSummary,
       answers,
+      quizPayload,
     } = req.body || {};
     if (!slug && !modelName) {
       return res.status(400).json({ message: 'slug or modelName is required' });
@@ -106,6 +108,7 @@ export const reportLastQuiz = async (req, res, next) => {
           quizPath: quizPath || '',
           answerSummary: summary,
           answers: answers && typeof answers === 'object' ? answers : null,
+          quizPayload: quizPayload && typeof quizPayload === 'object' ? quizPayload : null,
           loggedInAt: new Date(),
         },
       },
@@ -113,6 +116,27 @@ export const reportLastQuiz = async (req, res, next) => {
     ).select('-passwordHash -refreshToken');
 
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const cat = category || '';
+    if (['mobile', 'laptop', 'mac'].includes(cat) && slug) {
+      const payload = quizPayload && typeof quizPayload === 'object'
+        ? { ...quizPayload, slug }
+        : answers && typeof answers === 'object'
+          ? { ...answers, slug, storage: storage || '' }
+          : { slug, storage: storage || '' };
+      upsertPricingQuizRecord({
+        slug,
+        category: cat,
+        brand: brand || '',
+        modelName: modelName || '',
+        storage: storage || '',
+        quizPayload: payload,
+        quizSummary: summary,
+        sourceType: 'user_quiz',
+        sourceId: String(req.user.id),
+      }).catch(() => {});
+    }
+
     res.json({ lastQuizDevice: user.lastQuizDevice });
   } catch (error) {
     next(error);

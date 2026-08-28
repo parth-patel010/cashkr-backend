@@ -1,6 +1,8 @@
 import Order from '../models/Order.js';
 import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
+import { upsertPricingQuizRecord } from '../utils/pricingQuizService.js';
+import { orderDeviceToQuizPayload } from '../utils/orderDeviceToQuizPayload.js';
 
 const DUPLICATE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -86,6 +88,23 @@ export const createOrder = async (req, res, next) => {
       partnerName: '',
       partnerPhone: '',
     });
+
+    const cat = device?.category || '';
+    if (['mobile', 'laptop', 'mac'].includes(cat) && device?.slug) {
+      const quizPayload = orderDeviceToQuizPayload(device);
+      upsertPricingQuizRecord({
+        slug: device.slug,
+        category: cat,
+        brand: device.brand || '',
+        modelName: device.modelName || '',
+        storage: device.storage || '',
+        quizPayload,
+        quizSummary: [],
+        sourceType: 'order',
+        sourceId: String(order._id),
+        internalPrice: priceBreakdown?.finalPrice ?? null,
+      }).catch(() => {});
+    }
 
     res.status(201).json({
       orderId: order.orderId,

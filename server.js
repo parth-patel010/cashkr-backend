@@ -10,6 +10,7 @@ dotenv.config();
 
 import connectDB from './config/db.js';
 import mongoose from 'mongoose';
+import { startPricingAgentWorker } from './services/cashify/batchWorker.js';
 import { getAllowedOrigins, isAllowedOrigin } from './config/origins.js';
 import errorHandler from './middleware/errorHandler.js';
 import { initChatSocket } from './socket/chatSocket.js';
@@ -39,7 +40,12 @@ import { razorpayWebhook } from './controllers/razorpayWebhook.controller.js';
 const app = express();
 const server = http.createServer(app);
 
-connectDB();
+connectDB().then((connected) => {
+  if (connected) startPricingAgentWorker();
+});
+mongoose.connection.on('connected', () => {
+  startPricingAgentWorker();
+});
 initChatSocket(server, app);
 
 app.set('trust proxy', 1);

@@ -26,6 +26,23 @@ function brandSlugKey(brand) {
     .replace(/^-|-$/g, '');
 }
 
+function slugVariants(slug, brand) {
+  const variants = [slug];
+  const brandKey = brandSlugKey(brand);
+
+  if (brandKey && slug.startsWith(`${brandKey}-`)) {
+    const stripped = slug.slice(brandKey.length + 1);
+    if (stripped) variants.push(stripped);
+  }
+
+  // OnePlus seeds use oneplus-one-plus-* but Cashify uses oneplus-*
+  if (/^oneplus-one-plus-/i.test(slug)) {
+    variants.push(slug.replace(/^oneplus-one-plus-/i, 'oneplus-'));
+  }
+
+  return [...new Set(variants.filter(Boolean))];
+}
+
 /** Ordered URL candidates — Cashify often drops the brand prefix (e.g. used-g7-gaming-series). */
 export function buildCashifyProductUrlCandidates(device) {
   if (device.cashifyProductUrl) return [device.cashifyProductUrl];
@@ -44,13 +61,11 @@ export function buildCashifyProductUrlCandidates(device) {
 
   if (!basePaths.length) return [];
 
+  const slugs = slugVariants(slug, device.brand);
   const candidates = [];
   for (const base of basePaths) {
-    candidates.push(base + slug);
-    const brandKey = brandSlugKey(device.brand);
-    if (brandKey && slug.startsWith(`${brandKey}-`)) {
-      const stripped = slug.slice(brandKey.length + 1);
-      if (stripped) candidates.push(base + stripped);
+    for (const variant of slugs) {
+      candidates.push(base + variant);
     }
   }
 
