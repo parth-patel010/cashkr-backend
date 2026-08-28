@@ -3,14 +3,28 @@ import AgentTestRun from '../models/AgentTestRun.js';
 import config, { buildCashifyProductUrl } from '../config/cashify.js';
 import { calculateLaptopPrice } from '../utils/laptopPriceCalculator.js';
 import { calculateMobilePrice } from '../utils/mobilePriceCalculator.js';
-import {
-  getStatus,
-  verifySessionAlive,
-  requestOtp,
-  verifyOtp,
-  logoutCashify,
-} from '../services/cashify/sessionManager.js';
-import { runLaptopFlow } from '../services/cashify/laptopFlow.js';
+
+/** Lazy-load Playwright stack so the rest of the API keeps running if it is missing on the VPS. */
+async function getCashifyServices() {
+  try {
+    const [session, flow] = await Promise.all([
+      import('../services/cashify/sessionManager.js'),
+      import('../services/cashify/laptopFlow.js'),
+    ]);
+    return {
+      getStatus: session.getStatus,
+      verifySessionAlive: session.verifySessionAlive,
+      requestOtp: session.requestOtp,
+      verifyOtp: session.verifyOtp,
+      logoutCashify: session.logoutCashify,
+      runLaptopFlow: flow.runLaptopFlow,
+    };
+  } catch (error) {
+    throw new Error(
+      `Cashify agent unavailable. On the VPS run: npm install && npx playwright install chromium. (${error.message})`,
+    );
+  }
+}
 
 function yesNoToBool(val) {
   if (val === true || val === false) return val;
@@ -189,24 +203,27 @@ export const getValuationTestDevices = async (req, res, next) => {
 
 export const cashifyStatus = async (req, res, next) => {
   try {
+    const { getStatus } = await getCashifyServices();
     const status = await getStatus();
     res.json(status);
   } catch (error) {
-    next(error);
+    res.status(503).json({ error: error.message });
   }
 };
 
 export const cashifyVerifySession = async (req, res, next) => {
   try {
+    const { verifySessionAlive } = await getCashifyServices();
     const status = await verifySessionAlive();
     res.json(status);
   } catch (error) {
-    res.status(502).json({ error: error.message });
+    res.status(503).json({ error: error.message });
   }
 };
 
 export const cashifyRequestOtp = async (req, res, next) => {
   try {
+    const { requestOtp } = await getCashifyServices();
     const { phone } = req.body;
     const result = await requestOtp(phone);
     res.json(result);
@@ -217,6 +234,7 @@ export const cashifyRequestOtp = async (req, res, next) => {
 
 export const cashifyVerifyOtp = async (req, res, next) => {
   try {
+    const { verifyOtp } = await getCashifyServices();
     const { otp } = req.body;
     const result = await verifyOtp(otp);
     res.json(result);
@@ -227,10 +245,11 @@ export const cashifyVerifyOtp = async (req, res, next) => {
 
 export const cashifyLogout = async (req, res, next) => {
   try {
+    const { logoutCashify } = await getCashifyServices();
     const result = await logoutCashify();
     res.json(result);
   } catch (error) {
-    res.status(502).json({ error: error.message });
+    res.status(503).json({ error: error.message });
   }
 };
 
@@ -282,6 +301,7 @@ export const runValuationTestQuote = async (req, res, next) => {
         status = 'partial';
       } else {
         try {
+          const { runLaptopFlow } = await getCashifyServices();
           const flowResult = await runLaptopFlow(quizPayload, {
             productUrl,
             modelName: device.modelName,

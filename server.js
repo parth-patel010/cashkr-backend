@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import connectDB from './config/db.js';
+import mongoose from 'mongoose';
 import { getAllowedOrigins, isAllowedOrigin } from './config/origins.js';
 import errorHandler from './middleware/errorHandler.js';
 import { initChatSocket } from './socket/chatSocket.js';
@@ -110,8 +111,11 @@ app.use('/api/app-settings', appSettingsRoutes);
 app.use('/api/category-quizzes', categoryQuizRoutes);
 
 app.get('/api/health', (req, res) => {
+  const dbState = mongoose.connection.readyState;
+  const dbLabels = ['disconnected', 'connected', 'connecting', 'disconnecting'];
   res.json({
-    status: 'ok',
+    status: dbState === 1 ? 'ok' : 'degraded',
+    db: dbLabels[dbState] || 'unknown',
     timestamp: new Date().toISOString(),
     allowedOrigins: getAllowedOrigins().length,
   });
