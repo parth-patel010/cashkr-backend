@@ -1,8 +1,6 @@
 ﻿import { RAM_PRICES, STORAGE_PRICES, CPU_PRICES, CPU_GEN_FACTORS } from './laptopPricingData.js';
-import { findLenovoOverridePrice } from './lenovoPriceOverrides.js';
-import { findZbookPowerOverridePrice } from './hpZbookPowerOverrides.js';
-import { findRogChromebookOverridePrice } from './rogChromebookOverrides.js';
-import { findMacbookOverridePrice } from './macbookPriceOverrides.js';
+import { calculateCashifyAlignedLaptopPrice } from './pricing/laptopPricingAlgorithm.js';
+import { bbmpFromUrl } from './pricing/specTier.js';
 /** Apple MacBook / iMac â€” never use Windows CPU/RAM/GPU component pricing. */
 export function isAppleMacDevice(device) {
   if (!device) return false;
@@ -58,7 +56,7 @@ function isIntelMacProcessor(processorStr) {
 /** Align Intel Mac catalog quotes with Cashify (~â‚¹30k listed i5 path â†’ ~â‚¹20k). */
 const MAC_INTEL_MARKET_FACTOR = 20 / 30;
 
-export function calculateLaptopPrice(device, selections) {
+function calculateLegacyLaptopPrice(device, selections) {
   const { ram, storage, yearBracket,
     functionalIssues = [], screenIssues = [], bodyIssues = [],
     accessories, powerStatus, screenSize } = selections;
@@ -67,34 +65,6 @@ export function calculateLaptopPrice(device, selections) {
 
   if (isAppleMacDevice(device)) {
     // MacBook override table (Cashify + â‚¹1,000) â€” before catalog CPU/age math
-    const macOverride = findMacbookOverridePrice(device, {
-      ...selections,
-      yearBracket,
-      ram,
-      storage,
-    });
-    if (macOverride != null) {
-      let finalPrice = macOverride;
-      if (powerStatus === 'off') {
-        finalPrice = Math.max(Math.round((finalPrice * 0.05) / 10) * 10, 0);
-      } else {
-        finalPrice = Math.max(Math.round(finalPrice / 100) * 100, 0);
-      }
-      return {
-        basePrice: macOverride,
-        componentBase: macOverride,
-        ageAdjustment: 0,
-        powerDeduction: powerStatus === 'off' ? -(macOverride - finalPrice) : 0,
-        functionalDeduction: 0,
-        screenDeduction: 0,
-        bodyDeduction: 0,
-        accessoriesBonus: 0,
-        finalPrice,
-        priceSource: 'macbook_override',
-      };
-    }
-
-    // â”€â”€ MacBook / Apple logic (catalog base â†’ CPU tier â†’ age â†’ deductions) â”€â”€
     const variants = device.variants || [];
     const selectedProcessor = selections.processor || '';
 
@@ -226,90 +196,6 @@ export function calculateLaptopPrice(device, selections) {
     // â”€â”€ WINDOWS LAPTOPS ONLY â€” Component_Base algorithm (locked) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Final = (Component_Base Ã— Model Ã— Gen Ã— Gaming Ã— 1.72 Ã— Age Ã— Condition Ã— Screen) + Accessory
     // Component_Base is ALWAYS computed fresh from hardware tables â€” never reuse admin/catalog base.
-
-    // Lenovo override table (Cashify + â‚¹1,000) â€” exact series/CPU/RAM/storage/age match
-    const lenovoOverride = findLenovoOverridePrice(device, {
-      ...selections,
-      yearBracket,
-      ram,
-      storage,
-    });
-    if (lenovoOverride != null) {
-      let finalPrice = lenovoOverride;
-      if (powerStatus === 'off') {
-        finalPrice = Math.max(Math.round((finalPrice * 0.05) / 10) * 10, 0);
-      } else {
-        finalPrice = Math.max(Math.round(finalPrice / 10) * 10, 0);
-      }
-      return {
-        basePrice: lenovoOverride,
-        componentBase: lenovoOverride,
-        ageAdjustment: 0,
-        powerDeduction: powerStatus === 'off' ? -(lenovoOverride - finalPrice) : 0,
-        functionalDeduction: 0,
-        screenDeduction: 0,
-        bodyDeduction: 0,
-        accessoriesBonus: 0,
-        finalPrice,
-        priceSource: 'lenovo_override',
-      };
-    }
-
-    // ASUS ROG / Asus Chromebook override â€” i3 / i5 / i7 / i9 (Cashify + â‚¹1,000)
-    const rogChromebookOverride = findRogChromebookOverridePrice(device, {
-      ...selections,
-      yearBracket,
-      ram,
-      storage,
-    });
-    if (rogChromebookOverride != null) {
-      let finalPrice = rogChromebookOverride;
-      if (powerStatus === 'off') {
-        finalPrice = Math.max(Math.round((finalPrice * 0.05) / 10) * 10, 0);
-      } else {
-        finalPrice = Math.max(Math.round(finalPrice / 10) * 10, 0);
-      }
-      return {
-        basePrice: rogChromebookOverride,
-        componentBase: rogChromebookOverride,
-        ageAdjustment: 0,
-        powerDeduction: powerStatus === 'off' ? -(rogChromebookOverride - finalPrice) : 0,
-        functionalDeduction: 0,
-        screenDeduction: 0,
-        bodyDeduction: 0,
-        accessoriesBonus: 0,
-        finalPrice,
-        priceSource: 'rog_chromebook_override',
-      };
-    }
-
-    // HP ZBook Power override â€” Intel Core i5 configs only
-    const zbookOverride = findZbookPowerOverridePrice(device, {
-      ...selections,
-      yearBracket,
-      ram,
-      storage,
-    });
-    if (zbookOverride != null) {
-      let finalPrice = zbookOverride;
-      if (powerStatus === 'off') {
-        finalPrice = Math.max(Math.round((finalPrice * 0.05) / 10) * 10, 0);
-      } else {
-        finalPrice = Math.max(Math.round(finalPrice / 10) * 10, 0);
-      }
-      return {
-        basePrice: zbookOverride,
-        componentBase: zbookOverride,
-        ageAdjustment: 0,
-        powerDeduction: powerStatus === 'off' ? -(zbookOverride - finalPrice) : 0,
-        functionalDeduction: 0,
-        screenDeduction: 0,
-        bodyDeduction: 0,
-        accessoriesBonus: 0,
-        finalPrice,
-        priceSource: 'zbook_power_override',
-      };
-    }
 
     const MARKET_MULTIPLIER = 1.72;
     const ACCESSORY_CHARGER_BONUS = 300;
@@ -497,6 +383,64 @@ export function calculateLaptopPrice(device, selections) {
       bodyDeduction: 0,
       accessoriesBonus: accessoryBonus,
       finalPrice,
+      priceSource: 'component_calculator',
     };
   }
+}
+
+function resolveBbmp(device, options = {}) {
+  if (options.bbmp) return options.bbmp;
+  return bbmpFromUrl(device.cashifyProductUrl);
+}
+
+/**
+ * Laptop valuation: legacy component price + Cashify-aligned offer (v5).
+ * finalPrice = DeviceKart offer (ourOffer); internalPrice = component baseline.
+ */
+export function calculateLaptopPrice(device, selections, options = {}) {
+  const legacy = calculateLegacyLaptopPrice(device, selections);
+  if (!legacy) return null;
+
+  const internalPrice = legacy.finalPrice;
+
+  const bbmp = resolveBbmp(device, options);
+  const alignedSelections = {
+    ...selections,
+    slug: device.slug,
+    processor: selections.processor || device.variants?.[0]?.processor || device.processorFamily || '',
+  };
+
+  const aligned = calculateCashifyAlignedLaptopPrice(
+    device,
+    alignedSelections,
+    internalPrice,
+    null,
+    {
+      bbmp,
+      liveCashifyQuote: options.liveCashifyQuote,
+      specTier: options.specTier,
+      specMeta: options.specMeta,
+    },
+  );
+
+  const finalPrice = Math.max(Math.round(aligned.ourOffer / 10) * 10, 500);
+
+  return {
+    ...legacy,
+    internalPrice,
+    componentFinalPrice: internalPrice,
+    cashifyEstimate: aligned.cashifyEstimate,
+    finalPrice,
+    priceSource: aligned.method,
+    pricingMethod: aligned.method,
+    specTier: aligned.specTier,
+    bbmp: aligned.bbmp,
+    issueMultiplier: aligned.issueMultiplier,
+    markupInr: aligned.ourOffer - aligned.cashifyEstimate,
+  };
+}
+
+/** Component-only price (for pricing-agent internal baseline). */
+export function calculateLegacyComponentLaptopPrice(device, selections) {
+  return calculateLegacyLaptopPrice(device, selections);
 }

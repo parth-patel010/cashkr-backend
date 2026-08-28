@@ -1,0 +1,528 @@
+{
+  "trainedAt": "2026-08-28T16:31:17.468Z",
+  "sampleSize": 74,
+  "global": {
+    "windowsScale": 0.1034,
+    "appleScale": 0.4545,
+    "bbmpFactor": 1,
+    "linearSlope": 0.6971,
+    "linearIntercept": -6500
+  },
+  "brandFactors": {
+    "Acer": 0.894,
+    "Apple": 4.395,
+    "Microsoft": 3.432,
+    "Lenovo": 0.876,
+    "Dell": 0.962,
+    "HP": 1.115,
+    "Asus": 1.177,
+    "Samsung": 0.621
+  },
+  "ageFactors": {
+    "twoToThree": 1.055,
+    "oneToTwo": 1,
+    "lessThan1": 0.897
+  },
+  "seriesBaselines": {
+    "acer-nitro-5-series": {
+      "brand": "Acer",
+      "model": "Nitro 5 Series",
+      "n": 1,
+      "medianCashify": 12990,
+      "minCashify": 12990,
+      "maxCashify": 12990,
+      "medianInternal": 22950,
+      "ratio": 0.566,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-retina-early-2016": {
+      "brand": "Apple",
+      "model": "MacBook Retina Early 2016",
+      "n": 2,
+      "medianCashify": 7580,
+      "minCashify": 3370,
+      "maxCashify": 7580,
+      "medianInternal": 7500,
+      "ratio": 1.0107,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-pro-retina-mid-2015": {
+      "brand": "Apple",
+      "model": "MacBook Pro Retina Mid 2015",
+      "n": 3,
+      "medianCashify": 500,
+      "minCashify": 500,
+      "maxCashify": 3190,
+      "medianInternal": 1100,
+      "ratio": 0.4545,
+      "bbmpHeadroom": 1.12
+    },
+    "microsoft-surface-pro-5-series": {
+      "brand": "Microsoft",
+      "model": "Surface Pro 5 Series",
+      "n": 1,
+      "medianCashify": 14630,
+      "minCashify": 14630,
+      "maxCashify": 14630,
+      "medianInternal": 13580,
+      "ratio": 1.0773,
+      "bbmpHeadroom": 1.12
+    },
+    "lenovo-ideapad-slim-3i-series": {
+      "brand": "Lenovo",
+      "model": "IdeaPad Slim 3i Series",
+      "n": 4,
+      "medianCashify": 1700,
+      "minCashify": 1360,
+      "maxCashify": 14410,
+      "medianInternal": 15510,
+      "ratio": 0.1096,
+      "bbmpHeadroom": 1.12
+    },
+    "dell-inspiron-3000-series": {
+      "brand": "Dell",
+      "model": "Inspiron 3000 Series",
+      "n": 4,
+      "medianCashify": 8170,
+      "minCashify": 1630,
+      "maxCashify": 16890,
+      "medianInternal": 16510,
+      "ratio": 0.4949,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-pro-2022": {
+      "brand": "Apple",
+      "model": "MacBook Pro 2022",
+      "n": 1,
+      "medianCashify": 35690,
+      "minCashify": 35690,
+      "maxCashify": 35690,
+      "medianInternal": 76600,
+      "ratio": 0.4659,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-air-2022": {
+      "brand": "Apple",
+      "model": "MacBook Air 2022",
+      "n": 3,
+      "medianCashify": 46620,
+      "minCashify": 27490,
+      "maxCashify": 46620,
+      "medianInternal": 39400,
+      "ratio": 1.1832,
+      "bbmpHeadroom": 1.12
+    },
+    "lenovo-thinkpad-x1-series": {
+      "brand": "Lenovo",
+      "model": "Thinkpad X1 Series",
+      "n": 2,
+      "medianCashify": 10830,
+      "minCashify": 1910,
+      "maxCashify": 10830,
+      "medianInternal": 29630,
+      "ratio": 0.3655,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-air-early-2014": {
+      "brand": "Apple",
+      "model": "MacBook Air Early 2014",
+      "n": 2,
+      "medianCashify": 500,
+      "minCashify": 500,
+      "maxCashify": 500,
+      "medianInternal": 1100,
+      "ratio": 0.4545,
+      "bbmpHeadroom": 1.12
+    },
+    "lenovo-thinkpad-l-series": {
+      "brand": "Lenovo",
+      "model": "Thinkpad L Series",
+      "n": 2,
+      "medianCashify": 1110,
+      "minCashify": 1060,
+      "maxCashify": 1110,
+      "medianInternal": 15510,
+      "ratio": 0.0716,
+      "bbmpHeadroom": 1.12
+    },
+    "dell-inspiron-5000-series": {
+      "brand": "Dell",
+      "model": "Inspiron 5000 Series",
+      "n": 1,
+      "medianCashify": 9500,
+      "minCashify": 9500,
+      "maxCashify": 9500,
+      "medianInternal": 13500,
+      "ratio": 0.7037,
+      "bbmpHeadroom": 1.12
+    },
+    "hp-pavilion-series": {
+      "brand": "HP",
+      "model": "Pavilion Series",
+      "n": 1,
+      "medianCashify": 2040,
+      "minCashify": 2040,
+      "maxCashify": 2040,
+      "medianInternal": 17690,
+      "ratio": 0.1153,
+      "bbmpHeadroom": 1.12
+    },
+    "dell-dell-15-series": {
+      "brand": "Dell",
+      "model": "Dell 15 Series",
+      "n": 3,
+      "medianCashify": 1860,
+      "minCashify": 1160,
+      "maxCashify": 3350,
+      "medianInternal": 18030,
+      "ratio": 0.1032,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-pro-2025": {
+      "brand": "Apple",
+      "model": "MacBook Pro 2025",
+      "n": 1,
+      "medianCashify": 34930,
+      "minCashify": 34930,
+      "maxCashify": 34930,
+      "medianInternal": 75200,
+      "ratio": 0.4645,
+      "bbmpHeadroom": 1.12
+    },
+    "asus-tuf-gaming-series": {
+      "brand": "Asus",
+      "model": "TUF Gaming Series",
+      "n": 4,
+      "medianCashify": 2890,
+      "minCashify": 2040,
+      "maxCashify": 32820,
+      "medianInternal": 24850,
+      "ratio": 0.1163,
+      "bbmpHeadroom": 1.12
+    },
+    "hp-stream-series": {
+      "brand": "HP",
+      "model": "Stream Series",
+      "n": 2,
+      "medianCashify": 1250,
+      "minCashify": 660,
+      "maxCashify": 1250,
+      "medianInternal": 8850,
+      "ratio": 0.1412,
+      "bbmpHeadroom": 1.12
+    },
+    "hp-hp-notebook-series": {
+      "brand": "HP",
+      "model": "HP Notebook Series",
+      "n": 2,
+      "medianCashify": 2860,
+      "minCashify": 1930,
+      "maxCashify": 2860,
+      "medianInternal": 27380,
+      "ratio": 0.1045,
+      "bbmpHeadroom": 1.12
+    },
+    "lenovo-yoga-500-series": {
+      "brand": "Lenovo",
+      "model": "Yoga 500 Series",
+      "n": 1,
+      "medianCashify": 24230,
+      "minCashify": 24230,
+      "maxCashify": 24230,
+      "medianInternal": 37280,
+      "ratio": 0.6499,
+      "bbmpHeadroom": 1.12
+    },
+    "microsoft-surface-go-2-series": {
+      "brand": "Microsoft",
+      "model": "Surface Go 2 Series",
+      "n": 2,
+      "medianCashify": 2080,
+      "minCashify": 1170,
+      "maxCashify": 2080,
+      "medianInternal": 22650,
+      "ratio": 0.0918,
+      "bbmpHeadroom": 1.12
+    },
+    "hp-hp-15-series": {
+      "brand": "HP",
+      "model": "HP 15 Series",
+      "n": 4,
+      "medianCashify": 2250,
+      "minCashify": 1870,
+      "maxCashify": 2270,
+      "medianInternal": 21200,
+      "ratio": 0.1061,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-air-2020": {
+      "brand": "Apple",
+      "model": "MacBook Air 2020",
+      "n": 2,
+      "medianCashify": 2500,
+      "minCashify": 2500,
+      "maxCashify": 2500,
+      "medianInternal": 30200,
+      "ratio": 0.0828,
+      "bbmpHeadroom": 1.12
+    },
+    "hp-elitebook-series": {
+      "brand": "HP",
+      "model": "Elitebook Series",
+      "n": 1,
+      "medianCashify": 1710,
+      "minCashify": 1710,
+      "maxCashify": 1710,
+      "medianInternal": 19860,
+      "ratio": 0.0861,
+      "bbmpHeadroom": 1.12
+    },
+    "dell-other-dell-series": {
+      "brand": "Dell",
+      "model": "Other Dell Series",
+      "n": 1,
+      "medianCashify": 1210,
+      "minCashify": 1210,
+      "maxCashify": 1210,
+      "medianInternal": 15510,
+      "ratio": 0.078,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-pro-mid-2017-touch-bar-four-thunderbolt-3-ports": {
+      "brand": "Apple",
+      "model": "MacBook Pro (Mid-2017, Touch Bar, Four Thunderbolt 3 Ports)",
+      "n": 1,
+      "medianCashify": 8860,
+      "minCashify": 8860,
+      "maxCashify": 8860,
+      "medianInternal": 11700,
+      "ratio": 0.7573,
+      "bbmpHeadroom": 1.12
+    },
+    "lenovo-ideapad-gaming-series": {
+      "brand": "Lenovo",
+      "model": "IdeaPad Gaming Series",
+      "n": 1,
+      "medianCashify": 2040,
+      "minCashify": 2040,
+      "maxCashify": 2040,
+      "medianInternal": 18390,
+      "ratio": 0.1109,
+      "bbmpHeadroom": 1.12
+    },
+    "lenovo-lenovo-loq-series": {
+      "brand": "Lenovo",
+      "model": "Lenovo LOQ Series",
+      "n": 1,
+      "medianCashify": 1950,
+      "minCashify": 1950,
+      "maxCashify": 1950,
+      "medianInternal": 19500,
+      "ratio": 0.1,
+      "bbmpHeadroom": 1.12
+    },
+    "hp-omen-series": {
+      "brand": "HP",
+      "model": "Omen Series",
+      "n": 1,
+      "medianCashify": 2280,
+      "minCashify": 2280,
+      "maxCashify": 2280,
+      "medianInternal": 25950,
+      "ratio": 0.0879,
+      "bbmpHeadroom": 1.12
+    },
+    "samsung-galaxy-book4-series": {
+      "brand": "Samsung",
+      "model": "Galaxy Book4 Series",
+      "n": 1,
+      "medianCashify": 1560,
+      "minCashify": 1560,
+      "maxCashify": 1560,
+      "medianInternal": 24300,
+      "ratio": 0.0642,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-air-mid-2017": {
+      "brand": "Apple",
+      "model": "MacBook Air Mid 2017",
+      "n": 1,
+      "medianCashify": 2330,
+      "minCashify": 2330,
+      "maxCashify": 2330,
+      "medianInternal": 6600,
+      "ratio": 0.353,
+      "bbmpHeadroom": 1.12
+    },
+    "lenovo-thinkpad-e-series": {
+      "brand": "Lenovo",
+      "model": "Thinkpad E Series",
+      "n": 1,
+      "medianCashify": 740,
+      "minCashify": 740,
+      "maxCashify": 740,
+      "medianInternal": 13110,
+      "ratio": 0.0564,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-air-2025": {
+      "brand": "Apple",
+      "model": "Macbook Air 2025",
+      "n": 1,
+      "medianCashify": 75500,
+      "minCashify": 75500,
+      "maxCashify": 75500,
+      "medianInternal": 66000,
+      "ratio": 1.1439,
+      "bbmpHeadroom": 1.12
+    },
+    "lenovo-thinkpad-t-series": {
+      "brand": "Lenovo",
+      "model": "Thinkpad T Series",
+      "n": 1,
+      "medianCashify": 1520,
+      "minCashify": 1520,
+      "maxCashify": 1520,
+      "medianInternal": 16770,
+      "ratio": 0.0906,
+      "bbmpHeadroom": 1.12
+    },
+    "acer-aspire-3-series": {
+      "brand": "Acer",
+      "model": "Aspire 3 Series",
+      "n": 1,
+      "medianCashify": 1540,
+      "minCashify": 1540,
+      "maxCashify": 1540,
+      "medianInternal": 19550,
+      "ratio": 0.0788,
+      "bbmpHeadroom": 1.12
+    },
+    "hp-pavilion-gaming-series": {
+      "brand": "HP",
+      "model": "Pavilion Gaming Series",
+      "n": 2,
+      "medianCashify": 2420,
+      "minCashify": 1870,
+      "maxCashify": 2420,
+      "medianInternal": 20250,
+      "ratio": 0.1195,
+      "bbmpHeadroom": 1.12
+    },
+    "dell-vostro-series": {
+      "brand": "Dell",
+      "model": "Vostro Series",
+      "n": 3,
+      "medianCashify": 1610,
+      "minCashify": 610,
+      "maxCashify": 2120,
+      "medianInternal": 16550,
+      "ratio": 0.0973,
+      "bbmpHeadroom": 1.12
+    },
+    "dell-latitude-3000-series": {
+      "brand": "Dell",
+      "model": "Latitude 3000 Series",
+      "n": 2,
+      "medianCashify": 1530,
+      "minCashify": 880,
+      "maxCashify": 1530,
+      "medianInternal": 12800,
+      "ratio": 0.1195,
+      "bbmpHeadroom": 1.12
+    },
+    "dell-vostro-3000-series": {
+      "brand": "Dell",
+      "model": "Vostro 3000 Series",
+      "n": 2,
+      "medianCashify": 2250,
+      "minCashify": 1750,
+      "maxCashify": 2250,
+      "medianInternal": 22620,
+      "ratio": 0.0995,
+      "bbmpHeadroom": 1.12
+    },
+    "dell-precision-series": {
+      "brand": "Dell",
+      "model": "Precision Series",
+      "n": 1,
+      "medianCashify": 1600,
+      "minCashify": 1600,
+      "maxCashify": 1600,
+      "medianInternal": 25450,
+      "ratio": 0.0629,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-pro-late-2016-two-thunderbolt-3-ports": {
+      "brand": "Apple",
+      "model": "MacBook Pro (Late 2016, Two Thunderbolt 3 Ports)",
+      "n": 1,
+      "medianCashify": 9810,
+      "minCashify": 9810,
+      "maxCashify": 9810,
+      "medianInternal": 15600,
+      "ratio": 0.6288,
+      "bbmpHeadroom": 1.12
+    },
+    "acer-predator-helios-300-series": {
+      "brand": "Acer",
+      "model": "Predator Helios 300 Series",
+      "n": 1,
+      "medianCashify": 1700,
+      "minCashify": 1700,
+      "maxCashify": 1700,
+      "medianInternal": 18390,
+      "ratio": 0.0924,
+      "bbmpHeadroom": 1.12
+    },
+    "hp-hp-14-series": {
+      "brand": "HP",
+      "model": "HP 14 Series",
+      "n": 1,
+      "medianCashify": 1590,
+      "minCashify": 1590,
+      "maxCashify": 1590,
+      "medianInternal": 10820,
+      "ratio": 0.147,
+      "bbmpHeadroom": 1.12
+    },
+    "apple-macbook-pro-retina-early-2013": {
+      "brand": "Apple",
+      "model": "MacBook Pro Retina Early 2013",
+      "n": 1,
+      "medianCashify": 3210,
+      "minCashify": 3210,
+      "maxCashify": 3210,
+      "medianInternal": 8800,
+      "ratio": 0.3648,
+      "bbmpHeadroom": 1.12
+    }
+  },
+  "diagnostics": {
+    "windows": {
+      "mean": 0.22922044198862457,
+      "median": 0.10341685649202734,
+      "n": 55
+    },
+    "apple": {
+      "mean": 0.574649841707113,
+      "median": 0.45454545454545453,
+      "n": 19
+    },
+    "fullSpecMedianRatio": 0.707843137254902,
+    "sparseSpecMedianRatio": 0.10341685649202734,
+    "noIssuesRatio": 0.11950617283950617,
+    "withIssuesRatio": 0.11258741258741259
+  },
+  "issueDeductionPct": {
+    "perIssue": 0.08,
+    "screenCracked": 0.25,
+    "lineDiscolour": 0.12,
+    "powerOff": 0.95,
+    "keyboard": 0.15,
+    "battery": 0.12,
+    "trackpad": 0.12
+  },
+  "markupInr": 1000,
+  "vendorSafetyPct": 0.08
+}

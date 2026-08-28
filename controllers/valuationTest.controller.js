@@ -126,8 +126,10 @@ function computeInternalPrice(device, quiz, category) {
     });
     if (!result) return null;
     return {
-      finalPrice: result.finalPrice,
+      finalPrice: result.internalPrice ?? result.componentFinalPrice ?? result.finalPrice,
+      offerPrice: result.finalPrice,
       basePrice: result.basePrice,
+      cashifyEstimate: result.cashifyEstimate ?? null,
       breakdown: {
         ageAdjustment: result.ageAdjustment || 0,
         powerDeduction: result.powerDeduction || 0,
@@ -136,6 +138,10 @@ function computeInternalPrice(device, quiz, category) {
         bodyDeduction: result.bodyDeduction || 0,
         accessoriesBonus: result.accessoriesBonus || 0,
         priceSource: result.priceSource || 'calculator',
+        internalPrice: result.internalPrice ?? null,
+        cashifyEstimate: result.cashifyEstimate ?? null,
+        pricingMethod: result.pricingMethod ?? null,
+        specTier: result.specTier ?? null,
       },
       priceSource: result.priceSource || 'calculator',
     };

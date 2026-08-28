@@ -282,6 +282,11 @@ export const calculatePrice = async (req, res, next) => {
           bodyDeduction: result.bodyDeduction || 0,
           accessoriesBonus: result.accessoriesBonus || 0,
           priceSource: result.priceSource || 'calculator',
+          internalPrice: result.internalPrice ?? null,
+          cashifyEstimate: result.cashifyEstimate ?? null,
+          pricingMethod: result.pricingMethod ?? null,
+          specTier: result.specTier ?? null,
+          bbmp: result.bbmp ?? null,
         },
       });
     }

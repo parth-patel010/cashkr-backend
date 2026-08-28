@@ -36,7 +36,10 @@ export function computeInternalPrice(device, quiz, category) {
       accessories: quiz.accessories?.length ? quiz.accessories : ['none'],
     });
     if (!result) return null;
-    return { finalPrice: result.finalPrice, breakdown: result };
+    return {
+      finalPrice: result.internalPrice ?? result.componentFinalPrice ?? result.finalPrice,
+      breakdown: result,
+    };
   }
 
   if (category === 'mobile') {
