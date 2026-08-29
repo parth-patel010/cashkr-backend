@@ -332,6 +332,14 @@ export async function runLaptopFlow(quiz, { productUrl, productUrls, modelName =
     throw new Error('Cashify product URL is required for laptop valuation.');
   }
 
+  const device = {
+    slug: quiz.slug,
+    brand: quiz.brand,
+    modelName: modelName || quiz.modelName,
+    category: quiz.category || 'laptop',
+    cashifyProductUrl: quiz.cashifyProductUrl || '',
+  };
+
   acquireQuoteLock();
   const screenshotDir = config.SCREENSHOT_DIR;
   ensureDir(screenshotDir);
@@ -361,10 +369,10 @@ export async function runLaptopFlow(quiz, { productUrl, productUrls, modelName =
   });
 
   try {
-    const opened = await openProductPage(page, urls, 'laptop');
+    const opened = await openProductPage(page, urls, 'laptop', device);
     resolvedProductUrl = opened.productUrl;
     productMaxPrice = opened.productMaxPrice;
-    debugArtifacts.productUrlsTried = urls;
+    debugArtifacts.productUrlsTried = opened.productUrlsTried || urls.map((url) => ({ url, valid: url === opened.productUrl }));
     debugArtifacts.resolvedProductUrl = resolvedProductUrl;
 
     try {
@@ -493,6 +501,9 @@ export async function runLaptopFlow(quiz, { productUrl, productUrls, modelName =
   } catch (error) {
     const artifact = await saveDebug(page, 'error', screenshotDir);
     if (artifact) debugArtifacts.screenshots.push(artifact);
+    if (error.productUrlsTried) {
+      debugArtifacts.productUrlsTried = error.productUrlsTried;
+    }
     error.debugArtifacts = debugArtifacts;
     throw error;
   } finally {

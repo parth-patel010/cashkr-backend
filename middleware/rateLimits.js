@@ -1,13 +1,15 @@
 import rateLimit from 'express-rate-limit';
 import { logSecurityEvent, clientIp } from '../utils/logSecurityEvent.js';
 
-const makeLimiter = ({ windowMs, max, type, message }) =>
+const makeLimiter = ({ windowMs, max, type, message, skip, keyGenerator }) =>
   rateLimit({
     windowMs,
     max,
     standardHeaders: true,
     legacyHeaders: false,
     message: { message },
+    skip,
+    keyGenerator: keyGenerator || ((req) => clientIp(req) || 'unknown'),
     handler: async (req, res, next, options) => {
       await logSecurityEvent({
         type,
@@ -19,11 +21,26 @@ const makeLimiter = ({ windowMs, max, type, message }) =>
     },
   });
 
+function shouldSkipGlobalLimit(req) {
+  const path = (req.originalUrl || req.path || '').split('?')[0];
+  if (path === '/api/health') return true;
+  // Admin routes are JWT-protected and have their own login limiter; polling must not
+  // consume the shared public IP bucket (pricing-agent polls every few seconds).
+  if (path.startsWith('/api/admin')) return true;
+  // Active laptop valuation status checks during a single user quote flow.
+  if (/^\/api\/valuation\/laptop\/status\//.test(path)) return true;
+  return false;
+}
+
+const GLOBAL_WINDOW_MS = 15 * 60 * 1000;
+const GLOBAL_MAX = Number(process.env.RATE_LIMIT_GLOBAL_MAX) || 1200;
+
 export const globalLimiter = makeLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 300,
+  windowMs: GLOBAL_WINDOW_MS,
+  max: GLOBAL_MAX,
   type: 'rate_limit_global',
   message: 'Too many requests. Please try again later.',
+  skip: shouldSkipGlobalLimit,
 });
 
 export const authLimiter = makeLimiter({

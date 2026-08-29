@@ -2,6 +2,7 @@ import Order from '../models/Order.js';
 import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import { upsertPricingQuizRecord } from '../utils/pricingQuizService.js';
+import { resolveLockedOrderPrice } from '../utils/orderPriceLock.js';
 
 const DUPLICATE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -52,10 +53,17 @@ export const createOrder = async (req, res, next) => {
       return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
     }
 
-    const { device, priceBreakdown, pickup } = req.body;
+    const { device, priceBreakdown, pickup, priceLock } = req.body;
     const userId = toObjectId(req.user.id);
+
+    const locked = await resolveLockedOrderPrice({ device, priceBreakdown, priceLock });
+    if (locked.error) {
+      return res.status(400).json({ message: locked.message, code: locked.error });
+    }
+    const resolvedPriceBreakdown = locked.priceBreakdown;
+
     const since = new Date(Date.now() - DUPLICATE_WINDOW_MS);
-    const incomingKey = buildOrderSpecKey(device, priceBreakdown);
+    const incomingKey = buildOrderSpecKey(device, resolvedPriceBreakdown);
 
     const recentOrders = await Order.find({
       userId,
@@ -81,7 +89,7 @@ export const createOrder = async (req, res, next) => {
     const order = await Order.create({
       userId,
       device,
-      priceBreakdown,
+      priceBreakdown: resolvedPriceBreakdown,
       pickup,
       status: 'placed',
       partnerName: '',
@@ -100,7 +108,7 @@ export const createOrder = async (req, res, next) => {
         quizSummary: Array.isArray(device.answerSummary) ? device.answerSummary : [],
         sourceType: 'order',
         sourceId: String(order._id),
-        internalPrice: priceBreakdown?.finalPrice ?? null,
+        internalPrice: resolvedPriceBreakdown?.internalPrice ?? resolvedPriceBreakdown?.finalPrice ?? null,
       }).catch(() => {});
     }
 

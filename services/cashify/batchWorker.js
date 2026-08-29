@@ -129,6 +129,9 @@ async function processOneRecord(record) {
     });
   } catch (error) {
     const msg = cleanPlaywrightError(error.message);
+    const productUrlsTried = error.productUrlsTried
+      || error.debugArtifacts?.productUrlsTried
+      || productUrls.map((url) => ({ url }));
     await PricingQuizRecord.findByIdAndUpdate(record._id, {
       agentStatus: error.cashifyPrice ? 'partial' : 'failed',
       cashifyPrice: error.cashifyPrice || null,
@@ -137,9 +140,39 @@ async function processOneRecord(record) {
         ? record.internalPrice - (error.cashifyPrice + config.MARKUP_INR)
         : null,
       error: msg,
+      note: productUrlsTried.length
+        ? `Tried ${productUrlsTried.length} Cashify URL(s). Set cashifyProductUrl on this device if all failed.`
+        : null,
       completedAt: new Date(),
       durationMs: Date.now() - started,
     });
+
+    await AgentTestRun.create({
+      category,
+      brand: device.brand,
+      modelName: device.modelName,
+      slug: device.slug,
+      storage: record.storage || '',
+      quizPayload: record.quizPayload,
+      internalResult: { finalPrice: record.internalPrice },
+      cashifyResult: {
+        cashifyPrice: error.cashifyPrice || null,
+        ourOffer: error.cashifyPrice ? error.cashifyPrice + config.MARKUP_INR : null,
+        productUrl: productUrls[0] || '',
+        note: msg,
+        productUrlsTried,
+      },
+      comparison: {
+        internalPrice: record.internalPrice,
+        cashifyPrice: error.cashifyPrice || null,
+        ourOffer: error.cashifyPrice ? error.cashifyPrice + config.MARKUP_INR : null,
+        difference: null,
+        markupInr: config.MARKUP_INR,
+      },
+      status: error.cashifyPrice ? 'partial' : 'failed',
+      runBy: 'pricing-agent-worker',
+      durationMs: Date.now() - started,
+    }).catch(() => {});
   }
 }
 

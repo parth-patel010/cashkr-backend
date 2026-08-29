@@ -18,6 +18,7 @@ import {
   MOBILE_AGE,
   MOBILE_PHYSICAL_LABELS,
   MOBILE_TECHNICAL_LABELS,
+  MOBILE_SCREEN_PHYSICAL_DEFAULT,
 } from './selectors.js';
 
 async function cardText(page, modelName) {
@@ -36,50 +37,97 @@ function normalizeStorageKey(storage) {
     .trim();
 }
 
-async function pickMobileVariant(page, modelName, storage) {
+export async function pickMobileVariant(page, modelName, storage) {
   const body = await page.locator('body').innerText().catch(() => '');
   if (!/choose a variant|select variant|pick a variant/i.test(body)) return false;
 
   const storageNorm = normalizeStorageKey(storage);
   const storageCompact = storageNorm.replace(/\s+/g, '').toLowerCase();
-  const ramStorageMatch = storageNorm.match(/(\d+\s*GB)\s*\/\s*(\d+\s*GB)/i);
-  const storageOnly = ramStorageMatch?.[2] || storageNorm;
+  const ramStorageMatch = storageNorm.match(/(\d+)\s*GB\s*\/\s*(\d+)\s*GB/i);
+  const ramGb = ramStorageMatch?.[1] || null;
+  const storageGb = ramStorageMatch?.[2] || null;
 
-  const clicked = await page.evaluate(({ modelName, storageCompact, storageOnly }) => {
-    const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const wantStorage = normalize(storageOnly).replace(/\s/g, '');
+  const clicked = await page.evaluate(({ ramGb, storageGb, storageCompact }) => {
+    const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const visible = (n) => n && (n.offsetParent || n.getClientRects().length);
     const nodes = [...document.querySelectorAll('div, span, button, a, p, li')];
-    const scored = nodes
+
+    const headerIdx = nodes.findIndex((n) => /choose a variant/i.test(normalize(n.innerText)));
+    let endIdx = nodes.length;
+    if (headerIdx >= 0) {
+      const nextIdx = nodes.findIndex((n, i) => i > headerIdx && /get exact value|top selling|top models|follow us on/i.test(normalize(n.innerText)));
+      if (nextIdx >= 0) endIdx = nextIdx;
+    }
+    const sectionNodes = headerIdx >= 0 ? nodes.slice(headerIdx, endIdx) : nodes;
+
+    const matchesStorage = (text) => {
+      const t = normalize(text);
+      if (!/^\d+\s*GB\s*\/\s*\d+\s*GB$/i.test(t)) return false;
+      if (!ramGb || !storageGb) return true;
+      const m = t.match(/(\d+)\s*GB\s*\/\s*(\d+)\s*GB/i);
+      return m && m[1] === ramGb && m[2] === storageGb;
+    };
+
+    const target = sectionNodes.find((n) => matchesStorage(n.innerText || n.textContent || '') && visible(n));
+    if (target) {
+      target.scrollIntoView({ block: 'center', inline: 'center' });
+      target.click();
+      return true;
+    }
+
+    // Fallback: score within section only (never "Top Models" links)
+    const scored = sectionNodes
       .map((n) => {
         const t = normalize(n.innerText || n.textContent || '');
-        if (!t || t.length > 140 || t.length < 8) return { n, score: 0 };
-        const compact = t.replace(/\s/g, '');
+        if (!/^\d+\s*GB\s*\/\s*\d+\s*GB$/i.test(t)) return { n, score: 0 };
+        const compact = t.replace(/\s/g, '').toLowerCase();
         let score = 0;
-        if (compact.includes(storageCompact)) score += 100;
-        if (wantStorage && compact.includes(wantStorage.replace(/\s/g, ''))) score += 80;
-        if (modelName && t.includes(normalize(modelName).split(' ').slice(-2).join(' '))) score += 40;
-        if (/\(\d+\s*gb\/\d+\s*gb\)/i.test(t)) score += 20;
+        if (storageCompact && compact === storageCompact.replace(/\s/g, '')) score += 100;
+        if (ramGb && storageGb) {
+          const m = t.match(/(\d+)\s*GB\s*\/\s*(\d+)\s*GB/i);
+          if (m && m[1] === ramGb && m[2] === storageGb) score += 120;
+        }
         return { n, score };
       })
       .filter((x) => x.score > 60)
       .sort((a, b) => b.score - a.score);
 
-    const target = scored[0]?.n;
-    if (!target) return false;
-    target.scrollIntoView({ block: 'center', inline: 'center' });
-    target.click();
+    const fallback = scored[0]?.n;
+    if (!fallback) return false;
+    fallback.scrollIntoView({ block: 'center', inline: 'center' });
+    fallback.click();
     return true;
-  }, { modelName, storageCompact, storageOnly });
+  }, { ramGb, storageGb, storageCompact });
 
   if (clicked) {
     await page.waitForTimeout(800);
     return true;
   }
 
-  if (storageOnly) {
-    return clickLabel(page, storageOnly);
+  if (ramStorageMatch?.[2]) {
+    return clickLabel(page, `${ramStorageMatch[2].replace(/\s/g, '')}`);
   }
   return false;
+}
+
+async function clickYesNoByIndex(page, questionIndex, yes) {
+  const label = yes ? 'Yes' : 'No';
+  const locator = page.getByText(label, { exact: true });
+  const count = await locator.count();
+  if (questionIndex < count) {
+    await locator.nth(questionIndex).click({ force: true, timeout: 5000 });
+  } else {
+    await clickYesNo(page, yes);
+  }
+  await page.waitForTimeout(300);
+}
+
+async function answerGeneralScreen(page, quiz) {
+  await clickYesNoByIndex(page, 0, quiz.ableToMakeCalls !== false);
+  await clickYesNoByIndex(page, 1, quiz.isTouchScreenWorking !== false);
+  await clickYesNoByIndex(page, 2, quiz.isScreenOriginal !== false);
+  await page.waitForTimeout(400);
+  await clickContinue(page);
 }
 
 async function answerAge(page, quiz) {
@@ -89,17 +137,55 @@ async function answerAge(page, quiz) {
   await clickContinue(page);
 }
 
+async function questionHead(page) {
+  const text = await page.locator('body').innerText().catch(() => '');
+  const moreIdx = text.indexOf('\nMore\n');
+  if (moreIdx < 0) return text.slice(0, 500);
+  const afterMore = text.slice(moreIdx + 6);
+  const stops = ['\nContinue\n', '\nDevice Evaluation\n', '\nFollow us on\n'];
+  let end = afterMore.length;
+  for (const stop of stops) {
+    const idx = afterMore.indexOf(stop);
+    if (idx >= 0 && idx < end) end = idx;
+  }
+  return afterMore.slice(0, end).trim();
+}
+
 async function answerIssueList(page, issues, labelMap) {
   const list = Array.isArray(issues) ? issues : [];
   if (!list.length) {
-    await clickLabel(page, 'No Issues').catch(() => {});
-    await clickLabel(page, 'No issues').catch(() => {});
+    const noIssueLabels = [
+      'No Issues',
+      'No issues',
+      'No functional issues',
+      'No Functional Issues',
+      'My device is working fine',
+      'Working Fine',
+      'None of the above',
+    ];
+    for (const label of noIssueLabels) {
+      const hit = await clickLabel(page, label);
+      if (hit) break;
+    }
     await clickContinue(page);
     return;
   }
   for (const id of list) {
     const label = labelMap[id];
-    if (label) await clickLabel(page, label);
+    if (!label) continue;
+    const hit = await clickLabel(page, label);
+    if (!hit) {
+      // try shorter/legacy aliases
+      const aliases = {
+        'Broken/scratch on device screen': ['Glass Crack', 'Broken/scratch on device screen'],
+        'Scratch/Dent on device body': ['Back Panel Damage', 'Scratch/Dent on device body'],
+        'Device panel missing/broken': ['Camera Glass Broken', 'Device panel missing/broken'],
+      };
+      for (const alt of aliases[label] || []) {
+        // eslint-disable-next-line no-await-in-loop
+        if (await clickLabel(page, alt)) break;
+      }
+    }
   }
   await page.waitForTimeout(400);
   await clickContinue(page);
@@ -112,15 +198,111 @@ async function answerAccessories(page, quiz) {
   const hasBox = quiz.hasBox || accList.some((a) => /box/i.test(String(a)));
   const hasCharger = quiz.hasCharger || accList.some((a) => /charger/i.test(String(a)));
 
-  await clickLabel(page, hasBill ? 'Bill Available' : 'Bill Not Available').catch(() =>
-    clickLabel(page, hasBill ? 'Valid Bill Available' : 'Valid Bill Not Available'),
-  );
-  await clickLabel(page, hasBox ? 'Original Box' : 'Box Not Available').catch(() =>
-    clickLabel(page, hasBox ? 'Original Box with same serial number' : 'Box Not Available or Damaged'),
-  );
-  await clickLabel(page, hasCharger ? 'Original Charger' : 'Charger Not Available').catch(() =>
-    clickLabel(page, hasCharger ? 'Original charger available' : 'Charger Not Available'),
-  );
+  if (hasBill) {
+    await clickLabel(page, 'Bill Available').catch(() =>
+      clickLabel(page, 'Valid Bill Available'),
+    );
+  } else {
+    await clickLabel(page, 'Bill Not Available').catch(() =>
+      clickLabel(page, 'Valid Bill Not Available'),
+    );
+  }
+
+  if (hasBox) {
+    await clickLabel(page, 'Original Box with same IMEI').catch(() =>
+      clickLabel(page, 'Original Box'),
+    );
+  } else {
+    await clickLabel(page, 'Box Not Available').catch(() =>
+      clickLabel(page, 'Box Not Available or Damaged'),
+    );
+  }
+
+  if (hasCharger) {
+    await clickLabel(page, 'Original Charger of Device').catch(() =>
+      clickLabel(page, 'Original Charger'),
+    );
+  } else {
+    await clickLabel(page, 'Charger Not Available').catch(() => {});
+  }
+
+  await page.waitForTimeout(400);
+  await clickContinue(page);
+}
+
+async function answerScreenPhysicalDetail(page) {
+  const defaults = [
+    '1-2 scratches on screen',
+    'Screen cracked/ glass broken',
+    'More than 2 scratches on screen',
+    'Chipped/cracked outside display area',
+  ];
+  for (const label of defaults) {
+    try {
+      const loc = page.getByText(label, { exact: true });
+      if (await loc.count()) {
+        await loc.first().click({ force: true, timeout: 3000 });
+        await page.waitForTimeout(400);
+        await clickContinue(page);
+        return;
+      }
+    } catch {
+      // try next
+    }
+  }
+  await clickContinue(page);
+}
+
+async function clickFirstVisible(page, labels) {
+  for (const label of labels) {
+    try {
+      const loc = page.getByText(label, { exact: true });
+      if (await loc.count()) {
+        await loc.first().click({ force: true, timeout: 3000 });
+        return true;
+      }
+    } catch {
+      // try next label
+    }
+  }
+  return false;
+}
+
+async function answerBodyPhysicalDetail(page, quiz = {}) {
+  const physical = quiz.physicalIssues || [];
+  const hasPanelMissing = physical.includes('panel_missing') || physical.includes('camera_glass_broken');
+  const hasBackPanel = physical.includes('back_panel');
+
+  const panelPick = hasPanelMissing
+    ? 'Missing side or back panel'
+    : hasBackPanel
+      ? 'Cracked/ broken side or back panel'
+      : 'No defect on side or back panel';
+
+  const bentPick = 'Phone not bent';
+
+  // Current Cashify mobile body detail (panel condition + bent/screen loose)
+  const clickedPanel = await clickFirstVisible(page, [
+    panelPick,
+    'No defect on side or back panel',
+    'Cracked/ broken side or back panel',
+    'Missing side or back panel',
+  ]);
+  const clickedBent = await clickFirstVisible(page, [
+    bentPick,
+    'Phone not bent',
+    'Loose screen (Gap in screen and body)',
+    'Bent/ curved panel',
+  ]);
+
+  // Legacy Cashify layout (scratches + dents)
+  if (!clickedPanel) {
+    await clickFirstVisible(page, ['1-2 scratches', 'More than 2 scratches', 'No scratches']);
+  }
+  if (!clickedBent) {
+    await clickFirstVisible(page, ['1-2 minor dents', 'No dents', 'Major dent(s) or more than 2']);
+  }
+
   await page.waitForTimeout(400);
   await clickContinue(page);
 }
@@ -137,9 +319,16 @@ async function answerESIM(page, quiz) {
 }
 
 async function answerCurrentMobileQuestion(page, quiz, modelName) {
-  const card = await cardText(page, modelName);
-  const kind = classifyMobileQuestion(card);
+  const head = await questionHead(page);
+  const bodyText = await page.locator('body').innerText().catch(() => '');
+  const kind = classifyMobileQuestion(head) !== 'unknown'
+    ? classifyMobileQuestion(head)
+    : classifyMobileQuestion(bodyText.slice(0, 900));
 
+  if (kind === 'generalScreen') {
+    await answerGeneralScreen(page, quiz);
+    return kind;
+  }
   if (kind === 'variant') {
     await pickMobileVariant(page, modelName, quiz.storage);
     await clickContinue(page);
@@ -173,8 +362,21 @@ async function answerCurrentMobileQuestion(page, quiz, modelName) {
     await answerIssueList(page, quiz.physicalIssues, MOBILE_PHYSICAL_LABELS);
     return kind;
   }
+  if (kind === 'screenPhysicalDetail') {
+    await answerScreenPhysicalDetail(page);
+    return kind;
+  }
+  if (kind === 'bodyPhysicalDetail') {
+    await answerBodyPhysicalDetail(page, quiz);
+    return kind;
+  }
   if (kind === 'technical') {
-    await answerIssueList(page, quiz.technicalIssues, MOBILE_TECHNICAL_LABELS);
+    // Camera glass can appear on Cashify technical page — merge if selected as physical id
+    const technical = [...(quiz.technicalIssues || [])];
+    if ((quiz.physicalIssues || []).includes('camera_glass_broken') && !technical.includes('camera_glass_broken')) {
+      technical.push('camera_glass_broken');
+    }
+    await answerIssueList(page, technical, MOBILE_TECHNICAL_LABELS);
     return kind;
   }
   if (kind === 'accessories') {
@@ -222,7 +424,8 @@ export async function runMobileFlow(quiz, { productUrl, productUrls, modelName =
 
   page.on('response', async (res) => {
     const url = res.url();
-    if (!/calculator|quote|price|next-rule|evaluate|buyback|offer/i.test(url)) return;
+    if (!/calculator|quote|next-rule|evaluate|buyback/i.test(url)) return;
+    if (/payment\/offers|refurbished|\/api\/cu01\/v1\/payment/i.test(url)) return;
     try {
       const json = await res.json();
       apiBodies.push({ url, json });
@@ -274,14 +477,15 @@ export async function runMobileFlow(quiz, { productUrl, productUrls, modelName =
     });
 
     const { cashifyPrice, loginLocked, finalText } = loopResult;
+    const onQuotePage = /sell\/quote|selling price/i.test(finalText) && /sell\/quote|calculator|pageId=/.test(page.url());
 
-    if (cashifyPrice && !loginLocked) {
+    if (cashifyPrice && !loginLocked && onQuotePage) {
       const artifact = await saveDebug(page, 'success', screenshotDir);
       if (artifact) debugArtifacts.screenshots.push(artifact);
       return { cashifyPrice, loginRequired: false, usedSession: usingSession, productUrl: resolvedProductUrl, debugArtifacts };
     }
 
-    if (cashifyPrice && usingSession && !/xx,xxx/i.test(finalText)) {
+    if (cashifyPrice && usingSession && !/xx,xxx/i.test(finalText) && onQuotePage) {
       const artifact = await saveDebug(page, 'success', screenshotDir);
       if (artifact) debugArtifacts.screenshots.push(artifact);
       return { cashifyPrice, loginRequired: false, usedSession: true, productUrl: resolvedProductUrl, debugArtifacts };

@@ -337,10 +337,13 @@ export const runValuationTestQuote = async (req, res, next) => {
         } catch (flowError) {
           const msg = cleanPlaywrightError(flowError.message);
           const resolvedUrl = flowError.productUrl || productUrl;
+          const urlsTried = flowError.productUrlsTried
+            || flowError.debugArtifacts?.productUrlsTried
+            || productUrls.map((url) => ({ url }));
           cashifyResult = {
             supported: true,
             productUrl: resolvedUrl,
-            productUrlsTried: productUrls,
+            productUrlsTried: urlsTried,
             cashifyPrice: flowError.cashifyPrice || null,
             ourOffer: flowError.cashifyPrice ? flowError.cashifyPrice + config.MARKUP_INR : null,
             error: msg,

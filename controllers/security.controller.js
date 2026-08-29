@@ -12,7 +12,10 @@ export const adminSecurityAudit = async (req, res, next) => {
       helmetEnabled: true,
       corsOrigins: getAllowedOrigins(),
       rateLimits: {
-        global: { windowMs: 15 * 60 * 1000, max: 300 },
+        global: {
+          windowMs: 15 * 60 * 1000,
+          max: Number(process.env.RATE_LIMIT_GLOBAL_MAX) || 1200,
+        },
         auth: { windowMs: 15 * 60 * 1000, max: 30 },
         orderCreate: { windowMs: 15 * 60 * 1000, max: 20 },
         chatSend: { windowMs: 15 * 60 * 1000, max: 60 },

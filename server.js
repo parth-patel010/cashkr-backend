@@ -77,6 +77,19 @@ app.use(cors({
   credentials: true,
 }));
 
+app.get('/api/health', (req, res) => {
+  const dbState = mongoose.connection.readyState;
+  const dbLabels = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+  const db = dbLabels[dbState] || 'unknown';
+  res.status(dbState === 1 ? 200 : 503).json({
+    status: dbState === 1 ? 'ok' : 'degraded',
+    db,
+    mongoUriConfigured: Boolean(process.env.MONGO_URI || process.env.MONGODB_URI),
+    timestamp: new Date().toISOString(),
+    allowedOrigins: getAllowedOrigins().length,
+  });
+});
+
 app.use(globalLimiter);
 
 // Razorpay webhook needs the raw body for signature verification
@@ -117,19 +130,6 @@ app.use('/api/vendor', vendorRoutes);
 app.use('/api/app-settings', appSettingsRoutes);
 app.use('/api/category-quizzes', categoryQuizRoutes);
 app.use('/api/valuation', valuationRoutes);
-
-app.get('/api/health', (req, res) => {
-  const dbState = mongoose.connection.readyState;
-  const dbLabels = ['disconnected', 'connected', 'connecting', 'disconnecting'];
-  const db = dbLabels[dbState] || 'unknown';
-  res.status(dbState === 1 ? 200 : 503).json({
-    status: dbState === 1 ? 'ok' : 'degraded',
-    db,
-    mongoUriConfigured: Boolean(process.env.MONGO_URI || process.env.MONGODB_URI),
-    timestamp: new Date().toISOString(),
-    allowedOrigins: getAllowedOrigins().length,
-  });
-});
 
 app.use(errorHandler);
 

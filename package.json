@@ -21,7 +21,8 @@
     "seed:smartwatch:apple": "node seeds/seedSmartwatchApple.js",
     "seed:gaming:sony": "node seeds/seedGamingSony.js",
     "seed:earbuds:apple": "node seeds/seedEarbudsApple.js",
-    "verify:laptop-quiz": "node scripts/verify-laptop-quiz-clicks.js"
+    "verify:laptop-quiz": "node scripts/verify-laptop-quiz-clicks.js",
+    "verify:mobile-quiz": "node scripts/verify-mobile-quiz-clicks.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

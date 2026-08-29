@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import config from '../../config/cashify.js';
+import config, {
+  buildCashifyProductUrlCandidates,
+  getBrandListingSlug,
+  slugVariants,
+} from '../../config/cashify.js';
 
 let quoteBusy = false;
 
@@ -146,7 +150,31 @@ export async function clickLabel(page, label) {
 
 export async function clickYesNo(page, yes) {
   const label = yes ? 'Yes' : 'No';
-  await page.getByText(label, { exact: true }).first().click({ force: true, timeout: 5000 }).catch(() => clickLabel(page, label));
+  const clicked = await page.evaluate((want) => {
+    const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const buttons = [...document.querySelectorAll('button')];
+    const continueBtn = buttons.find((b) => /^continue$/i.test(normalize(b.innerText)));
+    if (!continueBtn) return false;
+
+    let container = continueBtn.parentElement;
+    for (let depth = 0; depth < 10 && container; depth += 1) {
+      const candidates = [...container.querySelectorAll('button, div, span, label, p')].filter(
+        (n) => normalize(n.innerText) === want && (n.offsetParent || n.getClientRects().length),
+      );
+      if (candidates.length) {
+        const target = candidates[candidates.length - 1];
+        target.scrollIntoView({ block: 'center' });
+        target.click();
+        return true;
+      }
+      container = container.parentElement;
+    }
+    return false;
+  }, label);
+
+  if (!clicked) {
+    await page.getByText(label, { exact: true }).first().click({ force: true, timeout: 5000 }).catch(() => clickLabel(page, label));
+  }
   await page.waitForTimeout(600);
 }
 
@@ -267,27 +295,115 @@ export async function pageLooksLikeProductListing(page) {
   return /get exact value|get upto|choose a variant/i.test(text);
 }
 
-export async function openProductPage(page, productUrls, categoryLabel = 'device') {
+function scoreListingLink(href, slugHints = []) {
+  let pathSlug = '';
+  try {
+    const { pathname } = new URL(href);
+    const match = pathname.match(/\/sell-old-laptop\/used-([^/?#]+)/i);
+    pathSlug = match?.[1] || '';
+  } catch {
+    return -1;
+  }
+  if (!pathSlug) return -1;
+
+  let score = 0;
+  for (const hint of slugHints) {
+    if (!hint) continue;
+    if (pathSlug === hint) score = Math.max(score, 1000);
+    else if (pathSlug.includes(hint) || hint.includes(pathSlug)) score = Math.max(score, 500 - Math.abs(pathSlug.length - hint.length));
+  }
+  return score;
+}
+
+async function discoverFromBrandListing(page, device) {
+  const listingSlug = getBrandListingSlug(device?.brand);
+  if (!listingSlug || !device) return null;
+
+  const slugHints = slugVariants(device.slug, device.brand, device.modelName);
+  const listingUrl = `https://www.cashify.in/sell-old-laptop/${listingSlug}`;
+
+  try {
+    await page.goto(listingUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1500);
+
+    const links = await page.evaluate(() => [...document.querySelectorAll('a[href*="/sell-old-laptop/used-"]')]
+      .map((el) => el.href)
+      .filter(Boolean));
+
+    const ranked = [...new Set(links)]
+      .map((href) => ({ href, score: scoreListingLink(href, slugHints) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    for (const { href } of ranked.slice(0, 8)) {
+      await page.goto(href, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(1500);
+      if (await pageLooksLikeProductListing(page)) {
+        return href;
+      }
+    }
+  } catch {
+    // fall through
+  }
+
+  return null;
+}
+
+export async function openProductPage(page, productUrls, categoryLabel = 'device', device = null) {
   const urls = [...new Set((productUrls || []).filter(Boolean))];
+  if (!urls.length && device) {
+    urls.push(...buildCashifyProductUrlCandidates(device));
+  }
   if (!urls.length) {
     throw new Error(`Cashify product URL is required for ${categoryLabel} valuation.`);
   }
 
-  let lastError = null;
+  const productUrlsTried = [];
+  let lastReason = 'unknown error';
+
   for (const url of urls) {
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(2000);
-      if (await pageLooksLikeProductListing(page)) {
-        return { productUrl: url, productMaxPrice: parseRupees(await page.locator('body').innerText()) };
+      const valid = await pageLooksLikeProductListing(page);
+      productUrlsTried.push({ url, valid, reason: valid ? 'matched product page' : 'no product quote UI' });
+      if (valid) {
+        return {
+          productUrl: url,
+          productMaxPrice: parseRupees(await page.locator('body').innerText()),
+          productUrlsTried,
+        };
       }
-      lastError = new Error(`Cashify page loaded but has no product quote UI (${url}).`);
+      lastReason = `Cashify page loaded but has no product quote UI (${url}).`;
     } catch (error) {
-      lastError = error;
+      lastReason = error.message;
+      productUrlsTried.push({ url, valid: false, reason: error.message });
     }
   }
 
-  throw lastError || new Error(`Could not open a valid Cashify product page. Tried: ${urls.join(', ')}`);
+  if (device && (categoryLabel === 'laptop' || categoryLabel === 'mac' || device.category === 'laptop' || device.category === 'mac')) {
+    const discovered = await discoverFromBrandListing(page, device);
+    if (discovered) {
+      productUrlsTried.push({ url: discovered, valid: true, reason: 'matched via brand listing page' });
+      return {
+        productUrl: discovered,
+        productMaxPrice: parseRupees(await page.locator('body').innerText()),
+        productUrlsTried,
+      };
+    }
+    productUrlsTried.push({
+      url: `https://www.cashify.in/sell-old-laptop/${getBrandListingSlug(device.brand)}`,
+      valid: false,
+      reason: 'brand listing page had no matching product link',
+    });
+  }
+
+  const triedList = productUrlsTried.map((entry) => entry.url).join(', ');
+  const error = new Error(
+    `Could not open a valid Cashify product page for ${categoryLabel}. Tried ${productUrlsTried.length} URL(s): ${triedList}. ${lastReason} Set cashifyProductUrl on this device in Device Catalog if auto-discovery keeps failing.`,
+  );
+  error.productUrlsTried = productUrlsTried;
+  throw error;
 }
 
 export function isLoginModal(text) {
