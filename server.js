@@ -35,6 +35,7 @@ import chatRoutes from './routes/chat.routes.js';
 import vendorRoutes from './routes/vendor.routes.js';
 import appSettingsRoutes from './routes/appSettings.routes.js';
 import categoryQuizRoutes from './routes/categoryQuiz.routes.js';
+import valuationRoutes from './routes/valuation.routes.js';
 import { razorpayWebhook } from './controllers/razorpayWebhook.controller.js';
 
 const app = express();
@@ -115,6 +116,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/vendor', vendorRoutes);
 app.use('/api/app-settings', appSettingsRoutes);
 app.use('/api/category-quizzes', categoryQuizRoutes);
+app.use('/api/valuation', valuationRoutes);
 
 app.get('/api/health', (req, res) => {
   const dbState = mongoose.connection.readyState;

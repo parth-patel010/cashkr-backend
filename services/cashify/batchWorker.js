@@ -175,6 +175,38 @@ export function stopPricingAgentWorker() {
   }
 }
 
+export function isWorkerRunning() {
+  return workerRunning;
+}
+
+export async function getAgentQueueStats() {
+  const filter = pricingAgentEligibleFilter();
+  const [pending, running] = await Promise.all([
+    PricingQuizRecord.countDocuments({ agentStatus: 'pending', ...filter }),
+    PricingQuizRecord.countDocuments({ agentStatus: 'running', ...filter }),
+  ]);
+  return {
+    workerRunning,
+    pending,
+    running,
+    agentBusy: workerRunning || running > 0,
+  };
+}
+
+export async function getQueuePosition(recordId) {
+  const record = await PricingQuizRecord.findById(recordId).lean();
+  if (!record || record.agentStatus !== 'pending') return 0;
+  const ahead = await PricingQuizRecord.countDocuments({
+    agentStatus: 'pending',
+    ...pricingAgentEligibleFilter(),
+    $or: [
+      { createdAt: { $lt: record.createdAt } },
+      { createdAt: record.createdAt, _id: { $lt: record._id } },
+    ],
+  });
+  return ahead + 1;
+}
+
 export async function enqueueAllPending() {
   const records = await PricingQuizRecord.find({
     agentStatus: { $in: ['failed', 'running'] },

@@ -181,3 +181,77 @@ export async function findCompletedByHash(slug, quizHash) {
     cashifyPrice: { $ne: null },
   }).lean();
 }
+
+export async function findCachedValuationByHash(slug, quizHash) {
+  return PricingQuizRecord.findOne({
+    slug,
+    quizHash,
+    agentStatus: { $in: ['completed', 'partial', 'skipped'] },
+    ourOffer: { $ne: null },
+  }).lean();
+}
+
+export async function requestLaptopValuation({
+  slug,
+  quizPayload,
+  quizSummary = [],
+  userId,
+  brand,
+  modelName,
+  storage,
+}) {
+  const normalized = normalizeQuizForCategory({ ...quizPayload, slug }, 'laptop');
+  if (!normalized) {
+    return { error: 'INVALID_QUIZ', message: 'Quiz is incomplete or invalid.' };
+  }
+
+  const quizHash = hashQuizPayload(normalized);
+  const cached = await findCachedValuationByHash(slug, quizHash);
+  if (cached) {
+    return {
+      cached: true,
+      recordId: String(cached._id),
+      agentStatus: cached.agentStatus,
+      ourOffer: cached.ourOffer,
+      cashifyPrice: cached.cashifyPrice,
+      internalPrice: cached.internalPrice,
+      note: cached.note || 'Cached valuation for this quiz.',
+    };
+  }
+
+  const record = await upsertPricingQuizRecord({
+    slug,
+    category: 'laptop',
+    brand,
+    modelName,
+    storage,
+    quizPayload,
+    quizSummary,
+    sourceType: 'user_valuation',
+    sourceId: String(userId || ''),
+  });
+
+  if (!record) {
+    return { error: 'INVALID_QUIZ', message: 'Quiz is incomplete or device not found.' };
+  }
+
+  const doc = record.toObject ? record.toObject() : record;
+  if (['completed', 'partial', 'skipped'].includes(doc.agentStatus) && doc.ourOffer != null) {
+    return {
+      cached: true,
+      recordId: String(doc._id),
+      agentStatus: doc.agentStatus,
+      ourOffer: doc.ourOffer,
+      cashifyPrice: doc.cashifyPrice,
+      internalPrice: doc.internalPrice,
+      note: doc.note || 'Cached valuation for this quiz.',
+    };
+  }
+
+  return {
+    cached: false,
+    recordId: String(doc._id),
+    agentStatus: doc.agentStatus,
+    quizHash: doc.quizHash,
+  };
+}
