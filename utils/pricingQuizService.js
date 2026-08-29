@@ -21,9 +21,11 @@ function resolveVariantBasePrice(device, storage, ram) {
 export function computeInternalPrice(device, quiz, category) {
   if (category === 'laptop' || category === 'mac') {
     const deviceObj = device.toObject ? device.toObject() : device;
+    const ram = quiz.ram || deviceObj.variants?.[0]?.ram || '';
+    const storage = quiz.storage || deviceObj.variants?.[0]?.storage || '';
     const result = calculateLaptopPrice(deviceObj, {
-      ram: quiz.ram || deviceObj.variants?.[0]?.ram || '',
-      storage: quiz.storage || deviceObj.variants?.[0]?.storage || '',
+      ram,
+      storage,
       processor: quiz.processor || deviceObj.variants?.[0]?.processor || deviceObj.processorFamily || '',
       yearBracket: quiz.yearBracket,
       powerStatus: quiz.powerStatus || 'on',
@@ -36,8 +38,11 @@ export function computeInternalPrice(device, quiz, category) {
       accessories: quiz.accessories?.length ? quiz.accessories : ['none'],
     });
     if (!result) return null;
+    const catalogBase = resolveVariantBasePrice(deviceObj, storage, ram);
+    const basePrice = Number(result.basePrice ?? result.breakdown?.basePrice ?? catalogBase) || 0;
     return {
       finalPrice: result.internalPrice ?? result.componentFinalPrice ?? result.finalPrice,
+      basePrice,
       breakdown: result,
     };
   }
@@ -59,7 +64,7 @@ export function computeInternalPrice(device, quiz, category) {
       hasCharger: quiz.hasCharger,
       hasBox: quiz.hasBox,
     });
-    return { finalPrice: result.finalPrice, breakdown: result };
+    return { finalPrice: result.finalPrice, basePrice, breakdown: result };
   }
 
   return null;
@@ -79,6 +84,7 @@ export function serializePricingRecord(doc) {
     quizHash: r.quizHash,
     sourceType: r.sourceType,
     sourceId: r.sourceId,
+    basePrice: r.basePrice ?? 0,
     internalPrice: r.internalPrice,
     cashifyPrice: r.cashifyPrice,
     ourOffer: r.ourOffer,
@@ -131,6 +137,7 @@ export async function upsertPricingQuizRecord({
 
   const internal = computeInternalPrice(device, normalized, category);
   const internalPrice = internal?.finalPrice ?? null;
+  const basePrice = Number(internal?.basePrice) || 0;
 
   const existingCompleted = await PricingQuizRecord.findOne({
     slug,
@@ -147,6 +154,7 @@ export async function upsertPricingQuizRecord({
     quizSummary: summary,
     sourceType,
     sourceId: String(sourceId || ''),
+    basePrice,
     internalPrice,
     capturedAt: new Date(),
     hasFilledQuiz: true,
@@ -163,8 +171,11 @@ export async function upsertPricingQuizRecord({
     update.completedAt = existingCompleted.completedAt || new Date();
   } else {
     const current = await PricingQuizRecord.findOne({ slug, quizHash }).lean();
+    // Re-queue failed jobs; leave running alone so the user keeps waiting on the same record.
     if (!current || ['failed', 'pending'].includes(current.agentStatus)) {
       update.agentStatus = 'pending';
+      update.error = null;
+      update.completedAt = null;
     }
   }
 

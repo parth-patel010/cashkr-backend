@@ -17,6 +17,9 @@ export function orderDeviceToQuizPayload(device) {
       technicalIssues: device.technicalIssues,
       accessories: device.accessories,
       hasGSTBill: device.hasGSTBill,
+      screenPhysicalDetail: device.screenPhysicalDetail,
+      panelCondition: device.panelCondition,
+      bentCondition: device.bentCondition,
     });
   }
   if (category === 'laptop' || category === 'mac') {

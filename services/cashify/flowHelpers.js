@@ -10,7 +10,7 @@ let quoteBusy = false;
 
 export function acquireQuoteLock() {
   if (quoteBusy) {
-    throw new Error('Another Cashify quote is already running. Try again in a moment.');
+    throw new Error('Valuation agent is busy — Another Cashify quote is already running. Try again in a moment.');
   }
   quoteBusy = true;
 }

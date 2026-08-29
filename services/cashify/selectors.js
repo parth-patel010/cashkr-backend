@@ -90,12 +90,31 @@ export const MOBILE_PHYSICAL_LABELS = {
   screen_spot: 'Dead Spot/Visible line and Discoloration on screen',
   back_panel: 'Scratch/Dent on device body',
   panel_missing: 'Device panel missing/broken',
-  // Map DeviceKart camera-glass ID onto Cashify physical panel option when present;
-  // Camera Glass Broken also appears on the technical page for some models.
-  camera_glass_broken: 'Device panel missing/broken',
+  // Prefer technical page for Camera Glass Broken (merged in mobileFlow);
+  // also try exact label if Cashify shows it on the physical multi-select.
+  camera_glass_broken: 'Camera Glass Broken',
 };
 
 export const MOBILE_SCREEN_PHYSICAL_DEFAULT = '1-2 scratches on screen';
+
+export const MOBILE_SCREEN_PHYSICAL_DETAIL_LABELS = {
+  minor12: '1-2 scratches on screen',
+  more2: 'More than 2 scratches on screen',
+  cracked: 'Screen cracked/ glass broken',
+  chipped: 'Chipped/cracked outside display area',
+};
+
+export const MOBILE_PANEL_CONDITION_LABELS = {
+  none: 'No defect on side or back panel',
+  cracked: 'Cracked/ broken side or back panel',
+  missing: 'Missing side or back panel',
+};
+
+export const MOBILE_BENT_CONDITION_LABELS = {
+  none: 'Phone not bent',
+  loose: 'Loose screen (Gap in screen and body)',
+  bent: 'Bent/ curved panel',
+};
 
 export const MOBILE_TECHNICAL_LABELS = {
   battery_service: 'Battery Faulty',

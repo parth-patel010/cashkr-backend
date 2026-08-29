@@ -82,6 +82,9 @@ export function normalizeMobileQuiz(body) {
     eSIMSupport: body.eSIMSupport || 'physical+esim',
     physicalIssues: body.physicalIssues || [],
     technicalIssues: body.technicalIssues || [],
+    screenPhysicalDetail: body.screenPhysicalDetail || null,
+    panelCondition: body.panelCondition || null,
+    bentCondition: body.bentCondition || null,
     hasCharger: accList.some((a) => /charger/i.test(String(a))),
     hasBox: accList.some((a) => /box/i.test(String(a))),
     accessories: hasBill && !accList.some((a) => /bill/i.test(String(a)))

@@ -15,10 +15,14 @@ const pricingQuizRecordSchema = new mongoose.Schema({
     default: 'user_quiz',
   },
   sourceId: { type: String, default: '' },
+  /** Catalog variant base ("get upto") — used to prioritize the valuation queue. */
+  basePrice: { type: Number, default: 0, index: true },
   internalPrice: { type: Number, default: null },
   cashifyPrice: { type: Number, default: null },
   ourOffer: { type: Number, default: null },
   difference: { type: Number, default: null },
+  /** How many times this job was re-queued because the agent was busy. */
+  requeueCount: { type: Number, default: 0 },
   agentStatus: {
     type: String,
     enum: ['pending', 'running', 'completed', 'partial', 'failed', 'skipped', 'overridden'],
@@ -41,6 +45,7 @@ const pricingQuizRecordSchema = new mongoose.Schema({
 
 pricingQuizRecordSchema.index({ slug: 1, quizHash: 1 }, { unique: true });
 pricingQuizRecordSchema.index({ agentStatus: 1, createdAt: -1 });
+pricingQuizRecordSchema.index({ agentStatus: 1, basePrice: -1, createdAt: 1 });
 pricingQuizRecordSchema.index({ createdAt: -1 });
 
 const PricingQuizRecord = mongoose.model('PricingQuizRecord', pricingQuizRecordSchema);

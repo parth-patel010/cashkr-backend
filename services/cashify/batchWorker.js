@@ -4,13 +4,17 @@ import AgentTestRun from '../../models/AgentTestRun.js';
 import User from '../../models/User.js';
 import Order from '../../models/Order.js';
 import { buildCashifyProductUrlCandidates } from '../../config/cashify.js';
-import { findCompletedByHash, serializePricingRecord } from '../../utils/pricingQuizService.js';
-import { upsertPricingQuizRecord } from '../../utils/pricingQuizService.js';
+import { findCompletedByHash, serializePricingRecord, upsertPricingQuizRecord, computeInternalPrice } from '../../utils/pricingQuizService.js';
 import { hasFilledQuizFromSource, hasMeaningfulQuizSummary, pricingAgentEligibleFilter } from '../../utils/quizFilled.js';
 import { buildQuizSummaryFromPayload } from '../../utils/buildQuizSummary.js';
 import { computeOurOfferFromSettings } from '../../utils/offerMarkup.js';
 
 const POLL_MS = 5000;
+/** Re-queue jobs stuck in `running` (crashed worker / lock contention). */
+const STALE_RUNNING_MS = 12 * 60 * 1000;
+/** Highest catalog basePrice first; FIFO within the same base. */
+const QUEUE_SORT = { basePrice: -1, createdAt: 1, _id: 1 };
+
 let workerTimer = null;
 let workerRunning = false;
 
@@ -22,6 +26,95 @@ function cleanPlaywrightError(message) {
     .filter(Boolean)
     .slice(0, 2)
     .join(' ');
+}
+
+function isAgentBusyError(message) {
+  const msg = String(message || '').toLowerCase();
+  return (
+    msg.includes('another cashify quote is already running')
+    || msg.includes('quote is already running')
+    || msg.includes('try again in a moment')
+    || msg.includes('agent is busy')
+    || msg.includes('valuation agent is busy')
+  );
+}
+
+async function requeueBusyRecord(recordId, message) {
+  const current = await PricingQuizRecord.findById(recordId).select('requeueCount').lean();
+  const count = (current?.requeueCount || 0) + 1;
+  // Soft cap so a permanently stuck lock does not retry forever.
+  if (count > 60) {
+    await PricingQuizRecord.findByIdAndUpdate(recordId, {
+      agentStatus: 'failed',
+      error: 'Valuation agent stayed busy too long. Please try again.',
+      completedAt: new Date(),
+      note: 'Exceeded busy re-queue limit.',
+    });
+    return;
+  }
+  await PricingQuizRecord.findByIdAndUpdate(recordId, {
+    $set: {
+      agentStatus: 'pending',
+      error: null,
+      note: 'Waiting in queue — valuation agent was busy with another job.',
+      runAt: null,
+      completedAt: null,
+    },
+    $inc: { requeueCount: 1 },
+  });
+  console.log(`[pricing-agent] Re-queued ${recordId} (busy #${count}): ${cleanPlaywrightError(message)}`);
+}
+
+async function recoverStaleRunningRecords() {
+  const cutoff = new Date(Date.now() - STALE_RUNNING_MS);
+  const result = await PricingQuizRecord.updateMany(
+    {
+      agentStatus: 'running',
+      $or: [
+        { runAt: { $lt: cutoff } },
+        { runAt: null, updatedAt: { $lt: cutoff } },
+      ],
+    },
+    {
+      $set: {
+        agentStatus: 'pending',
+        error: null,
+        note: 'Re-queued after stale running state — waiting for agent again.',
+        runAt: null,
+      },
+      $inc: { requeueCount: 1 },
+    },
+  );
+  if (result.modifiedCount > 0) {
+    console.log(`[pricing-agent] Recovered ${result.modifiedCount} stale running job(s)`);
+  }
+}
+
+function pendingAheadFilter(record) {
+  const basePrice = Number(record.basePrice) || 0;
+  const createdAt = record.createdAt || new Date(0);
+  const samePriority = basePrice === 0
+    ? [{ basePrice: 0 }, { basePrice: null }, { basePrice: { $exists: false } }]
+    : [{ basePrice }];
+
+  return {
+    agentStatus: 'pending',
+    ...pricingAgentEligibleFilter(),
+    $or: [
+      { basePrice: { $gt: basePrice } },
+      {
+        $and: [
+          { $or: samePriority },
+          {
+            $or: [
+              { createdAt: { $lt: createdAt } },
+              { createdAt, _id: { $lt: record._id } },
+            ],
+          },
+        ],
+      },
+    ],
+  };
 }
 
 async function getCashifyServices() {
@@ -133,6 +226,13 @@ async function processOneRecord(record) {
     });
   } catch (error) {
     const msg = cleanPlaywrightError(error.message);
+
+    // Never surface "agent busy" as a user-facing failure — put job back in the priority queue.
+    if (isAgentBusyError(msg) && !error.cashifyPrice) {
+      await requeueBusyRecord(record._id, msg);
+      return;
+    }
+
     const productUrlsTried = error.productUrlsTried
       || error.debugArtifacts?.productUrlsTried
       || productUrls.map((url) => ({ url }));
@@ -191,12 +291,25 @@ async function workerTick() {
   if (workerRunning) return;
   workerRunning = true;
   try {
+    await recoverStaleRunningRecords();
     const record = await PricingQuizRecord.findOneAndUpdate(
       { agentStatus: 'pending', ...pricingAgentEligibleFilter() },
-      { $set: { agentStatus: 'running', runAt: new Date() } },
-      { sort: { createdAt: 1 }, new: true },
+      { $set: { agentStatus: 'running', runAt: new Date(), error: null } },
+      { sort: QUEUE_SORT, new: true },
     );
     if (record) {
+      // Backfill basePrice for older pending rows so priority sorting stays accurate.
+      if (!(Number(record.basePrice) > 0)) {
+        const device = await Device.findOne({ slug: record.slug, isActive: true }).lean();
+        if (device) {
+          const internal = computeInternalPrice(device, record.quizPayload || {}, record.category);
+          const basePrice = Number(internal?.basePrice) || 0;
+          if (basePrice > 0) {
+            await PricingQuizRecord.findByIdAndUpdate(record._id, { basePrice });
+            record.basePrice = basePrice;
+          }
+        }
+      }
       await processOneRecord(record);
     }
   } catch (error) {
@@ -240,15 +353,10 @@ export async function getAgentQueueStats() {
 
 export async function getQueuePosition(recordId) {
   const record = await PricingQuizRecord.findById(recordId).lean();
-  if (!record || record.agentStatus !== 'pending') return 0;
-  const ahead = await PricingQuizRecord.countDocuments({
-    agentStatus: 'pending',
-    ...pricingAgentEligibleFilter(),
-    $or: [
-      { createdAt: { $lt: record.createdAt } },
-      { createdAt: record.createdAt, _id: { $lt: record._id } },
-    ],
-  });
+  if (!record) return 0;
+  if (record.agentStatus === 'running') return 1;
+  if (record.agentStatus !== 'pending') return 0;
+  const ahead = await PricingQuizRecord.countDocuments(pendingAheadFilter(record));
   return ahead + 1;
 }
 
@@ -286,7 +394,22 @@ export async function enqueueAllPending() {
       });
       skipped += 1;
     } else {
-      await PricingQuizRecord.findByIdAndUpdate(record._id, { agentStatus: 'pending' });
+      const patch = { agentStatus: 'pending', error: null };
+      if (!(Number(record.basePrice) > 0)) {
+        const device = await Device.findOne({ slug: record.slug, isActive: true }).lean();
+        if (device) {
+          const internal = computeInternalPrice(
+            device,
+            record.quizPayload || {},
+            record.category,
+          );
+          if (internal?.basePrice != null) patch.basePrice = Number(internal.basePrice) || 0;
+          if (record.internalPrice == null && internal?.finalPrice != null) {
+            patch.internalPrice = internal.finalPrice;
+          }
+        }
+      }
+      await PricingQuizRecord.findByIdAndUpdate(record._id, patch);
       pending += 1;
     }
   }

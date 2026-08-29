@@ -19,6 +19,9 @@ import {
   MOBILE_PHYSICAL_LABELS,
   MOBILE_TECHNICAL_LABELS,
   MOBILE_SCREEN_PHYSICAL_DEFAULT,
+  MOBILE_SCREEN_PHYSICAL_DETAIL_LABELS,
+  MOBILE_PANEL_CONDITION_LABELS,
+  MOBILE_BENT_CONDITION_LABELS,
 } from './selectors.js';
 
 async function cardText(page, modelName) {
@@ -361,7 +364,8 @@ async function answerIssueList(page, issues, labelMap) {
       const aliases = {
         'Broken/scratch on device screen': ['Glass Crack', 'Broken/scratch on device screen'],
         'Scratch/Dent on device body': ['Back Panel Damage', 'Scratch/Dent on device body'],
-        'Device panel missing/broken': ['Camera Glass Broken', 'Device panel missing/broken'],
+        'Device panel missing/broken': ['Device panel missing/broken', 'Panel Missing'],
+        'Camera Glass Broken': ['Camera Glass Broken'],
       };
       for (const alt of aliases[label] || []) {
         // eslint-disable-next-line no-await-in-loop
@@ -412,14 +416,15 @@ async function answerAccessories(page, quiz) {
   await clickContinue(page);
 }
 
-async function answerScreenPhysicalDetail(page) {
-  const defaults = [
-    '1-2 scratches on screen',
-    'Screen cracked/ glass broken',
-    'More than 2 scratches on screen',
-    'Chipped/cracked outside display area',
+async function answerScreenPhysicalDetail(page, quiz = {}) {
+  const preferred =
+    MOBILE_SCREEN_PHYSICAL_DETAIL_LABELS[quiz.screenPhysicalDetail]
+    || MOBILE_SCREEN_PHYSICAL_DEFAULT;
+  const labels = [
+    preferred,
+    ...Object.values(MOBILE_SCREEN_PHYSICAL_DETAIL_LABELS).filter((l) => l !== preferred),
   ];
-  for (const label of defaults) {
+  for (const label of labels) {
     try {
       const loc = page.getByText(label, { exact: true });
       if (await loc.count()) {
@@ -452,29 +457,29 @@ async function clickFirstVisible(page, labels) {
 
 async function answerBodyPhysicalDetail(page, quiz = {}) {
   const physical = quiz.physicalIssues || [];
-  const hasPanelMissing = physical.includes('panel_missing') || physical.includes('camera_glass_broken');
+  const hasPanelMissing = physical.includes('panel_missing');
   const hasBackPanel = physical.includes('back_panel');
 
-  const panelPick = hasPanelMissing
-    ? 'Missing side or back panel'
-    : hasBackPanel
-      ? 'Cracked/ broken side or back panel'
-      : 'No defect on side or back panel';
+  const panelPick =
+    MOBILE_PANEL_CONDITION_LABELS[quiz.panelCondition]
+    || (hasPanelMissing
+      ? MOBILE_PANEL_CONDITION_LABELS.missing
+      : hasBackPanel
+        ? MOBILE_PANEL_CONDITION_LABELS.cracked
+        : MOBILE_PANEL_CONDITION_LABELS.none);
 
-  const bentPick = 'Phone not bent';
+  const bentPick =
+    MOBILE_BENT_CONDITION_LABELS[quiz.bentCondition]
+    || MOBILE_BENT_CONDITION_LABELS.none;
 
   // Current Cashify mobile body detail (panel condition + bent/screen loose)
   const clickedPanel = await clickFirstVisible(page, [
     panelPick,
-    'No defect on side or back panel',
-    'Cracked/ broken side or back panel',
-    'Missing side or back panel',
+    ...Object.values(MOBILE_PANEL_CONDITION_LABELS).filter((l) => l !== panelPick),
   ]);
   const clickedBent = await clickFirstVisible(page, [
     bentPick,
-    'Phone not bent',
-    'Loose screen (Gap in screen and body)',
-    'Bent/ curved panel',
+    ...Object.values(MOBILE_BENT_CONDITION_LABELS).filter((l) => l !== bentPick),
   ]);
 
   // Legacy Cashify layout (scratches + dents)
@@ -491,10 +496,25 @@ async function answerBodyPhysicalDetail(page, quiz = {}) {
 
 async function answerESIM(page, quiz) {
   const mode = quiz.eSIMSupport || 'physical+esim';
-  if (mode === 'esim_only_global') {
-    await clickLabel(page, 'eSIM only (No Physical SIM)').catch(() => clickLabel(page, 'eSIM only'));
+  if (mode === 'esim_only_global' || mode === 'dual') {
+    const clicked = await clickFirstVisible(page, [
+      'Dual eSIM',
+      'eSIM only (No Physical SIM)',
+      'eSIM only',
+      'Dual eSIM Only (Global/US variant)',
+    ]);
+    if (!clicked) {
+      await clickLabel(page, 'Dual eSIM').catch(() => {});
+    }
   } else {
-    await clickLabel(page, 'Physical SIM + eSIM').catch(() => clickLabel(page, 'Physical + eSIM'));
+    const clicked = await clickFirstVisible(page, [
+      'Single eSIM',
+      'Physical SIM + eSIM',
+      'Physical + eSIM',
+    ]);
+    if (!clicked) {
+      await clickLabel(page, 'Single eSIM').catch(() => {});
+    }
   }
   await page.waitForTimeout(600);
   await clickContinue(page);
@@ -545,7 +565,7 @@ async function answerCurrentMobileQuestion(page, quiz, modelName) {
     return kind;
   }
   if (kind === 'screenPhysicalDetail') {
-    await answerScreenPhysicalDetail(page);
+    await answerScreenPhysicalDetail(page, quiz);
     return kind;
   }
   if (kind === 'bodyPhysicalDetail') {

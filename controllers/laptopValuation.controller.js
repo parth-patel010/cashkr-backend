@@ -96,7 +96,7 @@ async function getValuationStatus(req, res, next) {
     }
 
     const queue = await getAgentQueueStats();
-    const queuePosition = record.agentStatus === 'pending'
+    const queuePosition = ['pending', 'running'].includes(record.agentStatus)
       ? await getQueuePosition(recordId)
       : 0;
 
