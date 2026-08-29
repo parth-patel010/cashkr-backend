@@ -321,7 +321,11 @@ export const runValuationTestQuote = async (req, res, next) => {
           });
           const resolvedUrl = flowResult.productUrl || productUrl;
           const ourOffer = flowResult.cashifyPrice
-            ? await computeOurOfferFromSettings(flowResult.cashifyPrice, category)
+            ? await computeOurOfferFromSettings(
+              flowResult.cashifyPrice,
+              category,
+              internalResult.basePrice,
+            )
             : null;
           cashifyResult = {
             supported: true,
@@ -342,7 +346,11 @@ export const runValuationTestQuote = async (req, res, next) => {
             || flowError.debugArtifacts?.productUrlsTried
             || productUrls.map((url) => ({ url }));
           const failOffer = flowError.cashifyPrice
-            ? await computeOurOfferFromSettings(flowError.cashifyPrice, category)
+            ? await computeOurOfferFromSettings(
+              flowError.cashifyPrice,
+              category,
+              internalResult.basePrice,
+            )
             : null;
           cashifyResult = {
             supported: true,

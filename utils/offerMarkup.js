@@ -1,7 +1,7 @@
 import AppSettings from '../models/AppSettings.js';
 import config from '../config/cashify.js';
 
-/** Default Cashify → DeviceKart offer % increments by price bucket. */
+/** Default % increments by DeviceKart catalog base price; applied to Cashify quote. */
 export const DEFAULT_PRICING_BRACKETS = {
   mobile: [
     { min: 0, max: 3000, percent: 20 },
@@ -31,9 +31,9 @@ export function normalizeBracketList(list, fallback = []) {
     .sort((a, b) => a.min - b.min);
 }
 
-export function findBracket(cashifyPrice, brackets) {
-  const price = Number(cashifyPrice);
-  if (!Number.isFinite(price) || price < 0) return null;
+export function findBracket(basePrice, brackets) {
+  const price = Number(basePrice);
+  if (!Number.isFinite(price) || price <= 0) return null;
   const list = Array.isArray(brackets) ? brackets : [];
   for (const b of list) {
     const min = Number(b.min) || 0;
@@ -45,6 +45,7 @@ export function findBracket(cashifyPrice, brackets) {
 
 export function computeOurOffer(cashifyPrice, {
   category = 'mobile',
+  basePrice = null,
   bracketsByCategory = null,
   fallbackFixedInr = null,
 } = {}) {
@@ -55,7 +56,7 @@ export function computeOurOffer(cashifyPrice, {
   const brackets = bracketsByCategory?.[cat]
     || DEFAULT_PRICING_BRACKETS[cat]
     || DEFAULT_PRICING_BRACKETS.mobile;
-  const bracket = findBracket(price, brackets);
+  const bracket = findBracket(basePrice, brackets);
 
   if (bracket && Number.isFinite(Number(bracket.percent))) {
     const raw = price * (1 + Number(bracket.percent) / 100);
@@ -97,10 +98,11 @@ export function invalidatePricingBracketCache() {
   cachedAt = 0;
 }
 
-export async function computeOurOfferFromSettings(cashifyPrice, category = 'mobile') {
+export async function computeOurOfferFromSettings(cashifyPrice, category = 'mobile', basePrice = null) {
   const settings = await loadPricingBracketSettings();
   return computeOurOffer(cashifyPrice, {
     category,
+    basePrice,
     bracketsByCategory: settings,
     fallbackFixedInr: settings.fallbackFixedInr,
   });

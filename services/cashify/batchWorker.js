@@ -190,7 +190,7 @@ async function processOneRecord(record) {
 
     const cashifyPrice = flowResult.cashifyPrice;
     const ourOffer = cashifyPrice
-      ? await computeOurOfferFromSettings(cashifyPrice, category)
+      ? await computeOurOfferFromSettings(cashifyPrice, category, record.basePrice)
       : null;
     const internalPrice = record.internalPrice;
     const difference = ourOffer != null && internalPrice != null ? internalPrice - ourOffer : null;
@@ -247,7 +247,7 @@ async function processOneRecord(record) {
       || error.debugArtifacts?.productUrlsTried
       || [];
     const failOffer = error.cashifyPrice
-      ? await computeOurOfferFromSettings(error.cashifyPrice, record.category)
+      ? await computeOurOfferFromSettings(error.cashifyPrice, record.category, record.basePrice)
       : null;
 
     await finalizeRunning({
