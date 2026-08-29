@@ -258,7 +258,7 @@ async function processOneRecord(record) {
         ? record.internalPrice - failOffer
         : null,
       error: msg,
-      note: productUrlsTried.length
+      note: /could not open a valid cashify product page/i.test(msg) && productUrlsTried.length
         ? `Tried ${productUrlsTried.length} Cashify URL(s). Set cashifyProductUrl on this device if all failed.`
         : null,
       completedAt: new Date(),

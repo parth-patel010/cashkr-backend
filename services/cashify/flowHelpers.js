@@ -555,18 +555,32 @@ export function isLoginModal(text) {
 
 export function isResultPage(text, url) {
   if (isLoginModal(text)) return true;
-  const onCalc = /calculator|pageId=/.test(String(url || ''));
-  if (!onCalc && !/sell\/quote|final|offer/.test(String(url || '').toLowerCase())) return false;
-  return /your selling price|exact selling price|final quote|device worth|congratulations|offer for your|schedule a pickup|pick a time|get paid|recommended price|selling price/.test(text)
-    && /₹\s*[0-9]/.test(text);
+  const body = String(text || '');
+  const href = String(url || '').toLowerCase();
+  const hasPrice = /₹\s*[0-9]/.test(body);
+  const pricePhrases = /your selling price|exact selling price|final quote|device worth|congratulations|offer for your|schedule a pickup|pick a time|get paid|recommended price|selling price|you can get up to|get upto/i;
+  if (pricePhrases.test(body) && hasPrice) return true;
+  const onCalc = /calculator|pageid=/.test(href);
+  if (onCalc && /selling price|recommended price|final/i.test(body) && hasPrice) return true;
+  if (/sell\/quote|final|offer/.test(href) && pricePhrases.test(body) && hasPrice) return true;
+  return false;
 }
 
 export async function extractVisibleOffer(page) {
   const text = await page.locator('body').innerText();
-  const selling = text.match(/selling price[\s\S]{0,40}₹\s*([0-9,]{3,9})/i);
-  if (selling) {
-    const n = Number(selling[1].replace(/,/g, ''));
-    if (inPriceRange(n)) return n;
+  const patterns = [
+    /selling price[\s\S]{0,60}₹\s*([0-9,]{3,9})/i,
+    /recommended price[\s\S]{0,60}₹\s*([0-9,]{3,9})/i,
+    /you can get up to[\s\S]{0,40}₹\s*([0-9,]{3,9})/i,
+    /get upto[\s\S]{0,40}₹\s*([0-9,]{3,9})/i,
+    /₹\s*([0-9,]{4,9})/,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const n = Number(match[1].replace(/,/g, ''));
+      if (inPriceRange(n)) return n;
+    }
   }
   return parseRupees(text);
 }

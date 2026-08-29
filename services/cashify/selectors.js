@@ -146,7 +146,7 @@ export function classifyMobileQuestion(text) {
     return 'age';
   }
   if (/under warranty|valid warranty|warranty status|in warranty|device under warranty/.test(head)) return 'warranty';
-  if (/tell us more about your device screen defects|screen physical condition|screen cracked\/ glass broken|1-2 scratches on screen/.test(head)) {
+  if (/tell us more about your device screen defects|screen physical condition|screen cracked\/ glass broken|1-2 scratches on screen|visible lines on screen|spots on screen/i.test(head)) {
     return 'screenPhysicalDetail';
   }
   if (/tell us more about your device's body defects|panel condition|device bent|side\/back panel|scratches on device body|dents on device body|1-2 minor dents/.test(head)) {

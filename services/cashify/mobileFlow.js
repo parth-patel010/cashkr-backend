@@ -417,6 +417,33 @@ async function answerAccessories(page, quiz) {
 }
 
 async function answerScreenPhysicalDetail(page, quiz = {}) {
+  const physical = quiz.physicalIssues || [];
+  const hasGlass = physical.includes('glass_crack');
+  const hasSpot = physical.includes('screen_spot');
+
+  if (!hasGlass && !hasSpot) {
+    await clickContinue(page);
+    return;
+  }
+
+  if (!hasGlass && hasSpot) {
+    const spotLabels = [
+      'Large/ heavy visible spots on screen',
+      '1-2 minor spots on screen',
+      'Visible lines on Screen',
+      'No Lines',
+      'No spots on screen',
+    ];
+    const clicked = await clickFirstVisible(page, spotLabels);
+    if (clicked) {
+      await page.waitForTimeout(400);
+      await clickContinue(page);
+      return;
+    }
+    await clickContinue(page);
+    return;
+  }
+
   const preferred =
     MOBILE_SCREEN_PHYSICAL_DETAIL_LABELS[quiz.screenPhysicalDetail]
     || MOBILE_SCREEN_PHYSICAL_DEFAULT;
@@ -687,15 +714,23 @@ export async function runMobileFlow(quiz, { productUrl, productUrls, modelName =
     });
 
     const { cashifyPrice, loginLocked, finalText } = loopResult;
-    const onQuotePage = /sell\/quote|selling price/i.test(finalText) && /sell\/quote|calculator|pageId=/.test(page.url());
+    const onQuotePage = /sell\/quote|selling price|recommended price/i.test(finalText)
+      && /sell\/quote|calculator|pageId=/.test(page.url());
 
-    if (cashifyPrice && !loginLocked && onQuotePage) {
+    if (cashifyPrice && !loginLocked) {
       const artifact = await saveDebug(page, 'success', screenshotDir);
       if (artifact) debugArtifacts.screenshots.push(artifact);
-      return { cashifyPrice, loginRequired: false, usedSession: usingSession, productUrl: resolvedProductUrl, debugArtifacts };
+      return {
+        cashifyPrice,
+        loginRequired: false,
+        usedSession: usingSession,
+        productUrl: resolvedProductUrl,
+        note: onQuotePage ? null : 'Price read from Cashify calculator (pre-quote page).',
+        debugArtifacts,
+      };
     }
 
-    if (cashifyPrice && usingSession && !/xx,xxx/i.test(finalText) && onQuotePage) {
+    if (cashifyPrice && usingSession && !/xx,xxx/i.test(finalText)) {
       const artifact = await saveDebug(page, 'success', screenshotDir);
       if (artifact) debugArtifacts.screenshots.push(artifact);
       return { cashifyPrice, loginRequired: false, usedSession: true, productUrl: resolvedProductUrl, debugArtifacts };
@@ -721,10 +756,16 @@ export async function runMobileFlow(quiz, { productUrl, productUrls, modelName =
 
     const artifact = await saveDebug(page, 'no-price', screenshotDir);
     if (artifact) debugArtifacts.screenshots.push(artifact);
-    throw new Error('Could not read a valuation from the Cashify page.');
+    const steps = (debugArtifacts.steps || []).map((s) => s.kind).join(' → ');
+    throw new Error(
+      `Could not read a valuation from the Cashify page.${steps ? ` Steps: ${steps}.` : ''} URL: ${page.url()}`,
+    );
   } catch (error) {
     const artifact = await saveDebug(page, 'error', screenshotDir);
     if (artifact) debugArtifacts.screenshots.push(artifact);
+    if (error.productUrlsTried) {
+      debugArtifacts.productUrlsTried = error.productUrlsTried;
+    }
     error.debugArtifacts = debugArtifacts;
     throw error;
   } finally {
