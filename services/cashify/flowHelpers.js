@@ -43,15 +43,21 @@ export async function saveDebug(page, name, screenshotDir) {
 }
 
 const PRICE_KEYS = /^(exactPrice|quotedPrice|sellingPrice|offerPrice|quotePrice|finalPrice|cashifyPrice|qp|sp|amount|price|value|maxPrice|minPrice|quote)$/i;
+const MIN_PRICE = config.MIN_CASHIFY_PRICE ?? 100;
+const MAX_PRICE = 500_000;
+
+function inPriceRange(n) {
+  return Number.isFinite(n) && n >= MIN_PRICE && n <= MAX_PRICE;
+}
 
 export function findPriceInObject(value, depth = 0, keyHint = '') {
   if (depth > 10 || value == null) return null;
-  if (typeof value === 'number' && value >= 500 && value <= 500000 && /price|quote|amount|qp|sp|value/i.test(keyHint)) {
+  if (typeof value === 'number' && inPriceRange(value) && /price|quote|amount|qp|sp|value/i.test(keyHint)) {
     return value;
   }
   if (typeof value === 'string') {
     const n = Number(String(value).replace(/[₹,\s]/g, ''));
-    if (Number.isFinite(n) && n >= 500 && n <= 500000 && /price|quote|amount|qp|sp|value/i.test(keyHint)) {
+    if (inPriceRange(n) && /price|quote|amount|qp|sp|value/i.test(keyHint)) {
       return n;
     }
   }
@@ -66,7 +72,7 @@ export function findPriceInObject(value, depth = 0, keyHint = '') {
   for (const [key, nested] of Object.entries(value)) {
     if (PRICE_KEYS.test(key)) {
       const n = Number(String(nested).replace(/[₹,\s]/g, ''));
-      if (Number.isFinite(n) && n >= 500 && n <= 500000) return n;
+      if (inPriceRange(n)) return n;
     }
     if (nested && typeof nested === 'object') {
       const found = findPriceInObject(nested, depth + 1, key);
@@ -83,7 +89,7 @@ export function parseRupees(text) {
   const matches = [...String(text).matchAll(/₹\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{3,7})/g)];
   const values = matches
     .map((m) => Number(String(m[1]).replace(/,/g, '')))
-    .filter((n) => Number.isFinite(n) && n >= 500 && n <= 500000);
+    .filter((n) => inPriceRange(n));
   if (!values.length) return null;
   return values.sort((a, b) => b - a)[0];
 }
@@ -302,7 +308,7 @@ export async function extractVisibleOffer(page) {
   const selling = text.match(/selling price[\s\S]{0,40}₹\s*([0-9,]{3,9})/i);
   if (selling) {
     const n = Number(selling[1].replace(/,/g, ''));
-    if (n >= 500 && n <= 500000) return n;
+    if (inPriceRange(n)) return n;
   }
   return parseRupees(text);
 }

@@ -20,7 +20,8 @@
     "seed:repair": "node seeds/seedRepair.js",
     "seed:smartwatch:apple": "node seeds/seedSmartwatchApple.js",
     "seed:gaming:sony": "node seeds/seedGamingSony.js",
-    "seed:earbuds:apple": "node seeds/seedEarbudsApple.js"
+    "seed:earbuds:apple": "node seeds/seedEarbudsApple.js",
+    "verify:laptop-quiz": "node scripts/verify-laptop-quiz-clicks.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

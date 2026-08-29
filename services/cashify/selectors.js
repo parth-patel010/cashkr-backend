@@ -32,35 +32,44 @@ export const AGE = {
 export const FUNCTIONAL_LABELS = {
   keyboard: 'Keyboard not working; key(s) missing/not working',
   cdDrive: 'CD/DVD Drive not working',
-  trackpad: 'Touchpad not working',
-  battery: 'Battery',
-  speakers: 'Speakers',
+  trackpad: 'Touchpad not working; Left/Right click faulty',
+  battery: 'Battery dead, backup < 60 mins, health < 80%, cycle count > 800',
+  speakers: 'Speakers not working; faulty/cracked sound',
   wifi: 'Wi-Fi not working',
   ports: 'USB Port not working',
   webcam: 'Web Cam not working',
   charging: 'Charging Port not working',
-  hardDisk: 'Hard Drive Missing',
-  motherboard: 'Motherboard',
-  bluetooth: 'Bluetooth not working',
+  hardDisk: 'Hard Drive Missing/Defective',
+  motherboard: 'Motherboard issue - auto restart, hanging, heating/not booting',
+  // Cashify only exposes "Bluetooth Working fine" — skip when user reports bluetooth defect
+  bluetooth: null,
 };
 
 export const NEXT_BUTTONS = ['Continue', 'Next', 'Done', 'Get Quote', 'Check Price'];
 
 export function classifyQuestion(text) {
-  const q = String(text || '').toLowerCase();
-  if (/choose your laptop|system configuration details/.test(q)) return 'config';
-  if (/do you have the following|bill available|original box with same serial/.test(q)) return 'accessories';
-  if (/additional features|10-11 inch|12-13 inch|above 15 inch|touch screen|graphics card/.test(q)) {
-    return 'features';
+  const raw = String(text || '');
+  const q = raw.toLowerCase();
+  const head = q.slice(0, 220);
+
+  if (/age of your device|age of laptop/.test(head)) return 'age';
+  if (/do you have the following/.test(head)) return 'accessories';
+  if (/select the screen condition|scratch or broken on screen/.test(head)) return 'screenDetail';
+  if (/select the additional features|please select external graphics|additional features/.test(head)) return 'features';
+  if (/choose your laptop|system configuration details/.test(head)) return 'config';
+  if (/does your device function|functional issues|keyboard not working|touchpad not working/.test(head)) {
+    return 'functional';
   }
-  if (/functional|keyboard not working|cd\/dvd drive|does your device function/.test(q)) return 'functional';
-  if (/scratch on body|dent on top|dent on base|loose hinges|cracked or loose panel|physical condition of your device/.test(q)) {
+  if (/does your device switch on|does the laptop switch on/.test(head)) return 'power';
+  if (/select the physical condition|physical condition of your device/.test(head)) return 'physicalDetail';
+  if (/10-11 inch|12-13 inch|14-15 inch|above 15 inch/.test(q) && /screen|display|size|inch/.test(q)) return 'screenSize';
+  if (/touch screen/.test(q)) return 'touchScreen';
+  if (/graphics card|external graphics/.test(q)) return 'gpu';
+  if (/functional|cd\/dvd drive/.test(q)) return 'functional';
+  if (/scratch on body|dent on top|dent on base|loose hinges|cracked or loose panel/.test(q)) {
     return 'physicalDetail';
   }
-  if (/age of laptop|age of your device|between 1 and 3 years|less than 1 year \(in warranty\)/.test(q)) {
-    return 'age';
-  }
-  if (/scratch or broken on screen|discolouration on screen|spots on screen|line on screen|no scratches on screen|screen condition/.test(q)) {
+  if (/scratch or broken on screen|discolouration on screen|spots on screen|line on screen|screen condition/.test(q)) {
     return 'screenDetail';
   }
   if (/software issue|overall condition/.test(q)) return 'overall';

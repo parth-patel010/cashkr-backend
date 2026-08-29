@@ -52,6 +52,14 @@ export function buildQuizSummaryFromPayload(payload = {}, category) {
       });
     }
     if (payload.screenSize) rows.push({ question: 'Screen Size', answer: payload.screenSize });
+    if (payload.hasTouchScreen === true) {
+      rows.push({
+        question: 'Touch Screen',
+        answer: payload.isTouchScreenWorking ? 'Available (Working)' : 'Available (Not Working)',
+      });
+    } else if (payload.hasTouchScreen === false) {
+      rows.push({ question: 'Touch Screen', answer: 'Not Available' });
+    }
     if (payload.hasGpu === true || payload.hasDedicatedGpu === true) {
       rows.push({
         question: 'Graphic Card',

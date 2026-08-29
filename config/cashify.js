@@ -13,6 +13,7 @@ export default {
   NAV_TIMEOUT_MS: 45_000,
   STEP_TIMEOUT_MS: 8_000,
   MAX_QUESTION_STEPS: 24,
+  MIN_CASHIFY_PRICE: 100,
   SESSION_DIR: sessionRoot,
   USER_DATA_DIR: path.join(sessionRoot, 'browser-profile'),
   META_PATH: path.join(sessionRoot, 'meta.json'),

@@ -6,7 +6,6 @@ import {
   releaseQuoteLock,
   saveDebug,
   findPriceInObject,
-  parseRupees,
   pageIdFromUrl,
   clickLabel,
   clickContinue,
@@ -26,6 +25,13 @@ import {
   FUNCTIONAL_LABELS,
   classifyQuestion,
 } from './selectors.js';
+import {
+  mergeCashifyBody,
+  mergeCashifyScreen,
+  bodyLabel,
+  screenLabel,
+  deriveScreenOverall,
+} from '../../utils/laptopCashifyQuiz.js';
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -99,34 +105,134 @@ async function fillSystemConfiguration(page, quiz) {
   await clickContinue(page);
 }
 
-function gpuLabel(quiz) {
-  const hasGpu = quiz.hasGpu === 'yes' || quiz.hasGpu === true;
+function gpuLabel(quiz, modelName = '') {
+  const model = String(modelName || quiz.modelName || quiz.slug || '').toLowerCase();
+  const gaming = /nitro|tuf|legion|omen|alienware|rog|gaming|g15|g16|predator|victus|katana|crosshair/.test(model);
+  const hasGpu = quiz.hasGpu === 'yes' || quiz.hasGpu === true || gaming;
   const gpuWorking = quiz.isGpuWorking === 'yes' || quiz.isGpuWorking === true;
   if (hasGpu && !gpuWorking) return 'Graphics Card not working';
   if (hasGpu) return 'Graphics Card available';
   return 'Graphics Card not available';
 }
 
-function scratchLabel(quiz) {
-  const body = quiz.bodyIssuesList || quiz.bodyIssues || [];
-  if (body.includes('majorScratch')) return 'Major Scratch on Body';
-  if (body.includes('minorScratch')) return 'Minor Scratch on Body';
-  return 'No Scratches';
+function touchScreenLabel(quiz) {
+  const hasTouch = quiz.hasTouchScreen === 'yes' || quiz.hasTouchScreen === true;
+  const working = quiz.isTouchScreenWorking === 'yes' || quiz.isTouchScreenWorking === true;
+  if (hasTouch && !working) return 'Touch Screen not working';
+  if (hasTouch) return 'Touch Screen available';
+  return 'Touch Screen not available';
 }
 
-function dentLabel(quiz, panel) {
-  const body = quiz.bodyIssuesList || quiz.bodyIssues || [];
-  const major = panel === 'top' ? 'majorDentTop' : 'majorDentBase';
-  const minor = panel === 'top' ? 'minorDentTop' : 'minorDentBase';
-  if (body.includes(major)) return '1 or more Major Dents';
-  if (body.includes(minor)) return 'Upto 2 Minor Dents';
-  return panel === 'top' ? 'No Dents on top panel' : 'No Dents on base panel';
+async function answerScreen(page, quiz) {
+  const screen = mergeCashifyScreen(quiz);
+  await clickLabel(page, screenLabel('screenScratch', screen.screenScratch));
+  await clickLabel(page, screenLabel('screenDiscolouration', screen.screenDiscolouration));
+  await clickLabel(page, screenLabel('screenSpots', screen.screenSpots));
+  await clickLabel(page, screenLabel('screenLines', screen.screenLines));
+  await clickLabel(page, deriveScreenOverall(screen));
+  if (screen.isScreenOriginal === 'no') {
+    await clickLabel(page, 'No Screen is original');
+  } else {
+    await clickLabel(page, 'Display Working Fine').catch(() => {});
+  }
+  await clickContinue(page);
 }
 
-async function answerFeatures(page, quiz) {
+const PHYSICAL_SECTIONS = [
+  'Scratch on Body',
+  'Dent on Top Panel',
+  'Dent on Base Panel',
+  'Loose Hinges',
+  'Cracked or Loose Panel',
+];
+
+async function clickOptionInSection(page, sectionHeader, optionLabel) {
+  await page.evaluate(({ sectionHeader, optionLabel, sectionHeaders }) => {
+    const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const visible = (n) => n && (n.offsetParent || n.getClientRects().length);
+    const nodes = [...document.querySelectorAll('div, span, p, button, label')];
+    const headerIdx = nodes.findIndex((n) => {
+      const t = normalize(n.innerText);
+      return t === sectionHeader || t.startsWith(`${sectionHeader}\n`) || t.startsWith(sectionHeader);
+    });
+    if (headerIdx < 0) return;
+
+    const sectionOrder = sectionHeaders;
+    const myIdx = sectionOrder.indexOf(sectionHeader);
+    const nextHeader = sectionOrder[myIdx + 1];
+    let endIdx = nodes.length;
+    if (nextHeader) {
+      const nextIdx = nodes.findIndex((n, i) => i > headerIdx && normalize(n.innerText).startsWith(nextHeader));
+      if (nextIdx >= 0) endIdx = nextIdx;
+    }
+
+    const target = normalize(optionLabel);
+    const sectionNodes = nodes.slice(headerIdx, endIdx);
+    const el = sectionNodes.find((n) => normalize(n.innerText) === target && visible(n));
+    if (el) {
+      el.scrollIntoView({ block: 'center' });
+      el.click();
+    }
+  }, { sectionHeader, optionLabel, sectionHeaders: PHYSICAL_SECTIONS });
+}
+
+async function answerPhysical(page, quiz) {
+  const body = mergeCashifyBody(quiz);
+  const selections = [
+    ['Scratch on Body', bodyLabel('bodyScratch', body.bodyScratch)],
+    ['Dent on Top Panel', bodyLabel('dentTop', body.dentTop)],
+    ['Dent on Base Panel', bodyLabel('dentBase', body.dentBase)],
+    ['Loose Hinges', bodyLabel('looseHinges', body.looseHinges)],
+    ['Cracked or Loose Panel', bodyLabel('panelCondition', body.panelCondition)],
+  ];
+
+  for (const [section, label] of selections) {
+    await clickOptionInSection(page, section, label);
+    await page.waitForTimeout(150);
+  }
+
+  await page.waitForTimeout(600);
+  await clickContinue(page);
+  await page.waitForTimeout(1500);
+}
+
+async function answerFeatureStep(page, quiz, modelName = '') {
+  const text = (await page.locator('body').innerText().catch(() => '')).toLowerCase();
+  const hasScreenSize = /10-11 inch|12-13 inch|14-15 inch|above 15 inch/.test(text);
+  const hasGpu = /graphics card|external graphics/.test(text);
+  const hasTouch = /touch screen/.test(text);
+  const hasBoxBill = /original box|bill available|do you have the following/.test(text);
+
+  if (hasScreenSize) {
+    await clickLabel(page, SCREEN_SIZE[quiz.screenSize] || '14-15 inch');
+    await page.waitForTimeout(400);
+  }
+  if (hasTouch) {
+    await clickLabel(page, touchScreenLabel(quiz));
+    await page.waitForTimeout(400);
+  }
+  if (hasGpu) {
+    const label = gpuLabel(quiz, modelName);
+    await page.getByText(label, { exact: true }).first().click({ force: true, timeout: 5000 }).catch(() => clickLabel(page, label));
+    await page.waitForTimeout(400);
+  }
+  if (hasBoxBill) {
+    const accessories = quiz.accessories || [];
+    const accList = Array.isArray(accessories) ? accessories : [accessories].filter(Boolean);
+    await clickLabel(page, accList.includes('box') ? 'Original Box with same serial number' : 'Box Not Available or Damaged');
+    await clickLabel(page, accList.includes('bill') ? 'Bill Available' : 'Bill Not Available');
+  }
+  if (hasScreenSize || hasGpu || hasTouch || hasBoxBill) {
+    await clickContinue(page);
+    return;
+  }
+  await answerFeatures(page, quiz, modelName);
+}
+
+async function answerFeatures(page, quiz, modelName = '') {
   await clickLabel(page, SCREEN_SIZE[quiz.screenSize] || '14-15 inch');
-  await clickLabel(page, 'Touch Screen not available');
-  await clickLabel(page, gpuLabel(quiz));
+  await clickLabel(page, touchScreenLabel(quiz));
+  await clickLabel(page, gpuLabel(quiz, modelName));
   const accessories = quiz.accessories || [];
   const accList = Array.isArray(accessories) ? accessories : [accessories].filter(Boolean);
   await clickLabel(page, accList.includes('box') ? 'Original Box with same serial number' : 'Box Not Available or Damaged');
@@ -151,33 +257,10 @@ async function answerFunctional(page, quiz) {
   await clickContinue(page);
 }
 
-async function answerScreen(page, quiz) {
-  const issues = quiz.screenIssuesList || quiz.screenIssues || [];
-  const cracked = issues.includes('screenCracked');
-  const colour = issues.includes('lineDiscolour');
-  await clickLabel(page, cracked ? 'Screen Cracked or Broken' : 'No scratches on screen');
-  await clickLabel(page, colour ? 'Minor Discolouration' : 'No Discolouration');
-  await clickLabel(page, 'No spots on screen');
-  await clickLabel(page, colour ? 'Visible lines on Screen' : 'No Lines');
-  await clickLabel(page, cracked || colour ? 'Damaged' : 'Flawless');
-  await clickContinue(page);
-}
-
-async function answerPhysical(page, quiz) {
-  await clickLabel(page, 'Flawless');
-  await page.getByText(scratchLabel(quiz), { exact: true }).first().click({ force: true }).catch(() => {});
-  await page.getByText(dentLabel(quiz, 'top'), { exact: true }).first().click({ force: true }).catch(() => {});
-  await page.getByText(dentLabel(quiz, 'base'), { exact: true }).first().click({ force: true }).catch(() => {});
-  await page.getByText('No Loose Hinges', { exact: true }).first().click({ force: true }).catch(() => {});
-  await page.getByText('No Cracked or Loose Panel', { exact: true }).first().click({ force: true }).catch(() => {});
-  await page.waitForTimeout(400);
-  await page.getByRole('button', { name: /^continue$/i }).last().click({ force: true, timeout: 5000 }).catch(() => clickContinue(page));
-  await page.waitForTimeout(1500);
-}
-
 async function answerCurrentQuestion(page, quiz, modelName) {
+  const bodyText = await page.locator('body').innerText().catch(() => '');
   const card = await cardText(page, modelName);
-  const kind = classifyQuestion(card);
+  const kind = classifyQuestion(card) !== 'unknown' ? classifyQuestion(card) : classifyQuestion(bodyText);
 
   if (kind === 'power') {
     const label = quiz.powerStatus === 'off' ? 'No' : 'Yes';
@@ -189,8 +272,12 @@ async function answerCurrentQuestion(page, quiz, modelName) {
     await fillSystemConfiguration(page, quiz);
     return kind;
   }
-  if (kind === 'features') {
-    await answerFeatures(page, quiz);
+  if (kind === 'features' || kind === 'screenSize' || kind === 'touchScreen' || kind === 'gpu') {
+    if (/select the screen condition|scratch or broken on screen/.test(card.toLowerCase())) {
+      await answerScreen(page, quiz);
+      return 'screenDetail';
+    }
+    await answerFeatureStep(page, quiz, modelName);
     return kind;
   }
   if (kind === 'accessories') {
@@ -225,7 +312,8 @@ async function answerCurrentQuestion(page, quiz, modelName) {
     return kind;
   }
   if (kind === 'overall') {
-    await clickLabel(page, 'No software issue');
+    const sw = quiz.softwareIssue || 'no';
+    await clickLabel(page, sw === 'yes' ? 'Laptop have Software issue' : 'No software issue');
     await clickContinue(page);
     return kind;
   }

@@ -1,3 +1,10 @@
+import {
+  mergeCashifyBody,
+  mergeCashifyScreen,
+  toLegacyBodyIssues,
+  toLegacyScreenIssues,
+} from './laptopCashifyQuiz.js';
+
 function yesNoToBool(val) {
   if (val === true || val === false) return val;
   if (val === 'yes') return true;
@@ -9,6 +16,25 @@ export function normalizeLaptopQuiz(body) {
   const hasGpuRaw = body.hasGpu ?? body.hasDedicatedGpu;
   const hasGpu = yesNoToBool(hasGpuRaw);
   const isGpuWorking = hasGpu === true ? yesNoToBool(body.isGpuWorking) : false;
+  const hasTouchRaw = body.hasTouchScreen ?? body.isTouchScreen;
+  const hasTouchScreen = yesNoToBool(hasTouchRaw);
+  const isTouchScreenWorking = hasTouchScreen === true ? yesNoToBool(body.isTouchScreenWorking) : false;
+
+  const bodyFields = mergeCashifyBody(body);
+  const screenFields = mergeCashifyScreen(body);
+  const legacyBody = toLegacyBodyIssues(bodyFields);
+  const legacyScreen = toLegacyScreenIssues(screenFields);
+  const functionalIssues = body.functionalIssues || body.issuesList || [];
+  const screenIssues = body.screenIssues?.length
+    ? body.screenIssues
+    : body.screenIssuesList?.length
+      ? body.screenIssuesList
+      : legacyScreen;
+  const bodyIssues = body.bodyIssues?.length
+    ? body.bodyIssues
+    : body.bodyIssuesList?.length
+      ? body.bodyIssuesList
+      : legacyBody;
 
   return {
     slug: body.slug,
@@ -17,11 +43,16 @@ export function normalizeLaptopQuiz(body) {
     storage: body.storage || body.storageType || '',
     powerStatus: body.powerStatus || 'on',
     screenSize: body.screenSize || '14-15',
+    hasTouchScreen,
+    isTouchScreenWorking,
     hasGpu,
     isGpuWorking,
-    functionalIssues: body.functionalIssues || body.issuesList || [],
-    screenIssues: body.screenIssues || body.screenIssuesList || [],
-    bodyIssues: body.bodyIssues || body.bodyIssuesList || [],
+    ...bodyFields,
+    ...screenFields,
+    softwareIssue: body.softwareIssue || 'no',
+    functionalIssues,
+    screenIssues,
+    bodyIssues,
     accessories: Array.isArray(body.accessories)
       ? body.accessories
       : body.accessories
@@ -29,9 +60,9 @@ export function normalizeLaptopQuiz(body) {
         : [],
     yearBracket: body.yearBracket || body.age || 'oneToTwo',
     age: body.age || body.yearBracket || 'oneToTwo',
-    issuesList: body.issuesList || body.functionalIssues || [],
-    screenIssuesList: body.screenIssuesList || body.screenIssues || [],
-    bodyIssuesList: body.bodyIssuesList || body.bodyIssues || [],
+    issuesList: body.issuesList || functionalIssues,
+    screenIssuesList: body.screenIssuesList || screenIssues,
+    bodyIssuesList: body.bodyIssuesList || bodyIssues,
   };
 }
 
