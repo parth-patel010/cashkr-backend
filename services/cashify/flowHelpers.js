@@ -5,6 +5,7 @@ import config, {
   getBrandListingSlug,
   slugVariants,
 } from '../../config/cashify.js';
+import { looksLikeResultSummary } from './selectors.js';
 
 let quoteBusy = false;
 
@@ -104,6 +105,22 @@ export function pageIdFromUrl(url) {
   } catch {
     return null;
   }
+}
+
+/** Read quoted price embedded in Cashify calculator URL params when visible text/API miss. */
+export function extractPriceFromCalculatorUrl(url) {
+  try {
+    const params = new URL(url).searchParams;
+    for (const key of ['qp', 'sp', 'quotedPrice', 'sellPrice']) {
+      const raw = params.get(key);
+      if (!raw) continue;
+      const n = Number(String(raw).replace(/[₹,\s]/g, ''));
+      if (inPriceRange(n)) return n;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 export async function clickLabel(page, label) {
@@ -555,6 +572,7 @@ export function isLoginModal(text) {
 
 export function isResultPage(text, url) {
   if (isLoginModal(text)) return true;
+  if (looksLikeResultSummary(text)) return true;
   const body = String(text || '');
   const href = String(url || '').toLowerCase();
   const hasPrice = /₹\s*[0-9]/.test(body);
@@ -598,6 +616,8 @@ export async function runQuoteLoop(page, {
   let lastPageId = pageIdFromUrl(page.url());
   let stuck = 0;
   let loginLocked = false;
+  let lastKind = '';
+  let repeatKind = 0;
 
   for (let step = 0; step < config.MAX_QUESTION_STEPS; step += 1) {
     await page.waitForTimeout(600);
@@ -610,6 +630,25 @@ export async function runQuoteLoop(page, {
 
     const kind = await answerQuestion(page, quiz, modelName);
     debugArtifacts.steps.push({ step, kind, pageId: pageIdFromUrl(page.url()), url: page.url() });
+
+    if (kind === 'result') break;
+
+    if (kind === lastKind) {
+      repeatKind += 1;
+      if (repeatKind >= 2 && ['age', 'unknown', 'accessories'].includes(kind)) {
+        debugArtifacts.steps.push({
+          step,
+          kind: `${kind}-repeat-break`,
+          pageId: pageIdFromUrl(page.url()),
+          url: page.url(),
+        });
+        break;
+      }
+    } else {
+      repeatKind = 0;
+      lastKind = kind;
+    }
+
     await page.waitForTimeout(700);
 
     const afterText = await page.locator('body').innerText().catch(() => '');
@@ -650,6 +689,9 @@ export async function runQuoteLoop(page, {
   if (isLoginModal(finalText)) loginLocked = true;
 
   let cashifyPrice = getApiPrice() || (await extractVisibleOffer(page));
+  if (!cashifyPrice) {
+    cashifyPrice = extractPriceFromCalculatorUrl(page.url());
+  }
   if (!cashifyPrice) {
     for (const entry of apiBodies.slice().reverse()) {
       const found = findPriceInObject(entry.json);

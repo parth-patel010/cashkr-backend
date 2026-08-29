@@ -314,10 +314,26 @@ async function answerGeneralScreen(page, quiz) {
 }
 
 async function answerAge(page, quiz) {
-  const label = MOBILE_AGE[quiz.deviceAge] || quiz.deviceAge || MOBILE_AGE['Above 11 Months'];
-  await clickLabel(page, label);
-  await page.waitForTimeout(600);
+  const label = MOBILE_AGE[quiz.deviceAge] || quiz.deviceAge || 'Above 11 Months';
+  let clicked = await clickFirstVisible(page, [label]);
+  if (!clicked) {
+    clicked = await clickLabel(page, label);
+  }
+  if (!clicked) {
+    await page.evaluate((want) => {
+      const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+      const nodes = [...document.querySelectorAll('div, span, button, label, p, li')];
+      const target = nodes.find(
+        (n) => normalize(n.innerText || n.textContent || '') === want
+          && (n.offsetParent || n.getClientRects().length),
+      );
+      target?.scrollIntoView({ block: 'center' });
+      target?.click();
+    }, label);
+  }
+  await page.waitForTimeout(700);
   await clickContinue(page);
+  await page.waitForTimeout(900);
 }
 
 async function questionHead(page) {
@@ -325,7 +341,6 @@ async function questionHead(page) {
   const moreIdx = text.indexOf('\nMore\n');
   if (moreIdx < 0) return text.slice(0, 500);
   let afterMore = text.slice(moreIdx + 6);
-  // Strip validation toasts that appear above the quiz card
   afterMore = afterMore.replace(/Please answer the .*?\n+/gi, '');
   const stops = ['\nContinue\n', '\nDevice Evaluation\n', '\nFollow us on\n'];
   let end = afterMore.length;
@@ -333,7 +348,14 @@ async function questionHead(page) {
     const idx = afterMore.indexOf(stop);
     if (idx >= 0 && idx < end) end = idx;
   }
-  return afterMore.slice(0, end).trim();
+  const block = afterMore.slice(0, end);
+  const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+  const questionLine = lines.find((l) => (
+    /\?$/.test(l)
+    || /^(how old|what is the age|age of your|select the|tell us more|do you have the following|make and receive|functional or physical|choose a variant)/i.test(l)
+  ));
+  if (questionLine) return questionLine;
+  return lines.slice(0, 8).join('\n');
 }
 
 async function answerIssueList(page, issues, labelMap) {
@@ -565,6 +587,9 @@ async function answerCurrentMobileQuestion(page, quiz, modelName) {
   }
   if (kind === 'age') {
     await answerAge(page, quiz);
+    return kind;
+  }
+  if (kind === 'result') {
     return kind;
   }
   if (kind === 'warranty') {

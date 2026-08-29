@@ -85,6 +85,30 @@ export const MOBILE_AGE = {
   'Above 11 Months': 'Above 11 Months',
 };
 
+/** True only when the active Cashify step is asking device age (not summary/history text). */
+export function looksLikeAgeQuestion(text) {
+  const q = String(text || '').toLowerCase();
+  const hasQuestion = (
+    /age of your (mobile|phone|device)/.test(q)
+    || /how old is your (mobile|phone|device)/.test(q)
+    || /how old is the (mobile|phone|device)/.test(q)
+    || /what is the age of your (mobile|phone|device)/.test(q)
+    || /when did you purchase (this|your) (mobile|phone|device)/.test(q)
+  );
+  if (!hasQuestion) return false;
+  return /0 - 3 month|3 - 6 month|6 - 11 month|above 11 month/i.test(q);
+}
+
+export function looksLikeResultSummary(text) {
+  const body = String(text || '');
+  const q = body.toLowerCase();
+  return (
+    /device evaluation/i.test(q)
+    && /(selling price|recommended price|you can get|final quote|schedule a pickup)/i.test(q)
+    && /₹\s*[0-9]/.test(body)
+  );
+}
+
 export const MOBILE_PHYSICAL_LABELS = {
   glass_crack: 'Broken/scratch on device screen',
   screen_spot: 'Dead Spot/Visible line and Discoloration on screen',
@@ -138,13 +162,12 @@ export const MOBILE_TECHNICAL_LABELS = {
 
 export function classifyMobileQuestion(text) {
   const raw = String(text || '');
-  const head = raw.toLowerCase().split('\n').slice(0, 10).join('\n');
+  const head = raw.toLowerCase().split('\n').slice(0, 12).join('\n');
   const q = raw.toLowerCase();
 
+  if (looksLikeResultSummary(raw)) return 'result';
   if (/choose a variant|select variant|pick a variant|select storage|choose storage/.test(head)) return 'variant';
-  if (/age of your (mobile|phone|device)|device age|how old is|purchase date|0 - 3 month|above 11 month/.test(head)) {
-    return 'age';
-  }
+  if (looksLikeAgeQuestion(head) || looksLikeAgeQuestion(raw.slice(0, 1200))) return 'age';
   if (/under warranty|valid warranty|warranty status|in warranty|device under warranty/.test(head)) return 'warranty';
   if (/tell us more about your device screen defects|screen physical condition|screen cracked\/ glass broken|1-2 scratches on screen|visible lines on screen|spots on screen/i.test(head)) {
     return 'screenPhysicalDetail';
@@ -179,7 +202,7 @@ export function classifyMobileQuestion(text) {
 
   // Fallback on slightly wider slice (still avoid sidebar issue labels)
   if (/make and receive calls|able to make calls/.test(q)) return 'calls';
-  if (/age of your (mobile|phone|device)|above 11 month/.test(q)) return 'age';
+  if (looksLikeAgeQuestion(q.slice(0, 1400))) return 'age';
   if (/under warranty|valid warranty/.test(q)) return 'warranty';
   if (/touch screen|touchscreen/.test(q) && /working|functionality/.test(q)) return 'touchscreen';
   if (/original screen|screen replaced/.test(q)) return 'screenOriginal';
