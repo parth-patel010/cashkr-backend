@@ -195,7 +195,15 @@ export async function findCachedValuationByHash(slug, quizHash) {
   }).lean();
 }
 
-export async function requestLaptopValuation({
+export async function requestLaptopValuation(args) {
+  return requestDeviceValuation({ ...args, category: 'laptop' });
+}
+
+export async function requestMobileValuation(args) {
+  return requestDeviceValuation({ ...args, category: 'mobile' });
+}
+
+export async function requestDeviceValuation({
   slug,
   quizPayload,
   quizSummary = [],
@@ -203,8 +211,14 @@ export async function requestLaptopValuation({
   brand,
   modelName,
   storage,
+  category = 'laptop',
 }) {
-  const normalized = normalizeQuizForCategory({ ...quizPayload, slug }, 'laptop');
+  const allowed = ['mobile', 'laptop', 'mac'];
+  if (!allowed.includes(category)) {
+    return { error: 'INVALID_CATEGORY', message: 'Unsupported valuation category.' };
+  }
+
+  const normalized = normalizeQuizForCategory({ ...quizPayload, slug }, category);
   if (!normalized) {
     return { error: 'INVALID_QUIZ', message: 'Quiz is incomplete or invalid.' };
   }
@@ -225,7 +239,7 @@ export async function requestLaptopValuation({
 
   const record = await upsertPricingQuizRecord({
     slug,
-    category: 'laptop',
+    category,
     brand,
     modelName,
     storage,

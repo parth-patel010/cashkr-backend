@@ -1,4 +1,5 @@
-import PricingQuizRecord from '../models/PricingQuizRecord.js';
+﻿import PricingQuizRecord from '../models/PricingQuizRecord.js';
+import AppSettings from '../models/AppSettings.js';
 import { serializePricingRecord } from '../utils/pricingQuizService.js';
 import { pricingAgentEligibleFilter } from '../utils/quizFilled.js';
 import {
@@ -11,6 +12,13 @@ import {
   syncPricingRecordsFromSources,
   startPricingAgentWorker,
 } from '../services/cashify/batchWorker.js';
+import {
+  DEFAULT_PRICING_BRACKETS,
+  normalizeBracketList,
+  invalidatePricingBracketCache,
+  loadPricingBracketSettings,
+} from '../utils/offerMarkup.js';
+import { ensureAppSettings } from './appSettings.controller.js';
 
 export const getPricingAgentStats = async (req, res, next) => {
   try {
@@ -67,6 +75,62 @@ export const runAllPricingAgent = async (req, res, next) => {
     startPricingAgentWorker();
     const result = await enqueueAllPending();
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPricingAgentSettings = async (req, res, next) => {
+  try {
+    await ensureAppSettings();
+    const settings = await loadPricingBracketSettings({ force: true });
+    res.json({
+      mobileBrackets: settings.mobile,
+      laptopBrackets: settings.laptop,
+      fallbackFixedInr: settings.fallbackFixedInr,
+      defaults: DEFAULT_PRICING_BRACKETS,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const savePricingAgentSettings = async (req, res, next) => {
+  try {
+    await ensureAppSettings();
+    const mobileBrackets = normalizeBracketList(
+      req.body?.mobileBrackets,
+      DEFAULT_PRICING_BRACKETS.mobile,
+    );
+    const laptopBrackets = normalizeBracketList(
+      req.body?.laptopBrackets,
+      DEFAULT_PRICING_BRACKETS.laptop,
+    );
+    const fallbackFixedInr = Number.isFinite(Number(req.body?.fallbackFixedInr))
+      ? Math.max(0, Number(req.body.fallbackFixedInr))
+      : 1000;
+
+    const doc = await AppSettings.findOneAndUpdate(
+      { key: 'default' },
+      {
+        $set: {
+          pricingAgent: {
+            mobileBrackets,
+            laptopBrackets,
+            fallbackFixedInr,
+          },
+        },
+      },
+      { new: true },
+    );
+
+    invalidatePricingBracketCache();
+    res.json({
+      message: 'Pricing brackets saved',
+      mobileBrackets: normalizeBracketList(doc?.pricingAgent?.mobileBrackets, DEFAULT_PRICING_BRACKETS.mobile),
+      laptopBrackets: normalizeBracketList(doc?.pricingAgent?.laptopBrackets, DEFAULT_PRICING_BRACKETS.laptop),
+      fallbackFixedInr: doc?.pricingAgent?.fallbackFixedInr ?? fallbackFixedInr,
+    });
   } catch (error) {
     next(error);
   }

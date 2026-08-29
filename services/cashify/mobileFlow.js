@@ -37,20 +37,50 @@ function normalizeStorageKey(storage) {
     .trim();
 }
 
+/** Parse quiz storage into comparable parts. Supports "8 GB/256 GB", "256GB", "1 TB". */
+function parseStorageParts(storage) {
+  const norm = normalizeStorageKey(storage);
+  const compact = norm.replace(/\s+/g, '').toLowerCase();
+  const ramStorageMatch = norm.match(/(\d+)\s*GB\s*\/\s*(\d+)\s*(GB|TB)/i)
+    || compact.match(/^(\d+)gb\/(\d+)(gb|tb)$/i);
+  const storageOnlyMatch = norm.match(/^(\d+(?:\.\d+)?)\s*(GB|TB)$/i)
+    || compact.match(/^(\d+(?:\.\d+)?)(gb|tb)$/i);
+
+  const ramGb = ramStorageMatch?.[1] || null;
+  const storageAmount = ramStorageMatch?.[2] || storageOnlyMatch?.[1] || null;
+  const storageUnit = (ramStorageMatch?.[3] || storageOnlyMatch?.[2] || 'GB').toUpperCase();
+
+  const labels = [];
+  if (ramGb && storageAmount) {
+    labels.push(`${ramGb} GB/${storageAmount} ${storageUnit}`);
+    labels.push(`${ramGb}GB/${storageAmount}${storageUnit}`);
+  }
+  if (storageAmount) {
+    labels.push(`${storageAmount} ${storageUnit}`);
+    labels.push(`${storageAmount}${storageUnit}`);
+  }
+
+  return {
+    ramGb,
+    storageAmount,
+    storageUnit,
+    storageCompact: compact,
+    preferredLabels: [...new Set(labels)],
+  };
+}
+
 export async function pickMobileVariant(page, modelName, storage) {
   const body = await page.locator('body').innerText().catch(() => '');
   if (!/choose a variant|select variant|pick a variant/i.test(body)) return false;
 
-  const storageNorm = normalizeStorageKey(storage);
-  const storageCompact = storageNorm.replace(/\s+/g, '').toLowerCase();
-  const ramStorageMatch = storageNorm.match(/(\d+)\s*GB\s*\/\s*(\d+)\s*GB/i);
-  const ramGb = ramStorageMatch?.[1] || null;
-  const storageGb = ramStorageMatch?.[2] || null;
+  const parts = parseStorageParts(storage);
+  const beforeUrl = page.url();
 
-  const clicked = await page.evaluate(({ ramGb, storageGb, storageCompact }) => {
+  const result = await page.evaluate(({ parts }) => {
     const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const compact = (s) => normalize(s).replace(/\s+/g, '').toLowerCase();
     const visible = (n) => n && (n.offsetParent || n.getClientRects().length);
-    const nodes = [...document.querySelectorAll('div, span, button, a, p, li')];
+    const nodes = [...document.querySelectorAll('a, button, div, span, p, li, label')];
 
     const headerIdx = nodes.findIndex((n) => /choose a variant/i.test(normalize(n.innerText)));
     let endIdx = nodes.length;
@@ -60,54 +90,90 @@ export async function pickMobileVariant(page, modelName, storage) {
     }
     const sectionNodes = headerIdx >= 0 ? nodes.slice(headerIdx, endIdx) : nodes;
 
-    const matchesStorage = (text) => {
-      const t = normalize(text);
-      if (!/^\d+\s*GB\s*\/\s*\d+\s*GB$/i.test(t)) return false;
-      if (!ramGb || !storageGb) return true;
-      const m = t.match(/(\d+)\s*GB\s*\/\s*(\d+)\s*GB/i);
-      return m && m[1] === ramGb && m[2] === storageGb;
+    const isRamStorage = (t) => /^\d+\s*GB\s*\/\s*\d+(?:\.\d+)?\s*(GB|TB)$/i.test(t);
+    const isStorageOnly = (t) => /^\d+(?:\.\d+)?\s*(GB|TB)$/i.test(t);
+    const isVariantLabel = (t) => isRamStorage(t) || isStorageOnly(t);
+
+    const scoreNode = (n) => {
+      const t = normalize(n.innerText || n.textContent || '');
+      if (!isVariantLabel(t) || !visible(n)) return 0;
+      // Prefer leaf-ish labels (exact text) over huge wrappers
+      if (t.length > 40) return 0;
+      const c = compact(t);
+      let score = 1;
+
+      for (const label of parts.preferredLabels || []) {
+        if (c === compact(label)) score = Math.max(score, 200);
+      }
+
+      if (parts.ramGb && parts.storageAmount) {
+        const m = t.match(/(\d+)\s*GB\s*\/\s*(\d+(?:\.\d+)?)\s*(GB|TB)/i);
+        if (m && m[1] === parts.ramGb && m[2] === parts.storageAmount
+          && m[3].toUpperCase() === parts.storageUnit) {
+          score = Math.max(score, 180);
+        }
+      }
+
+      if (parts.storageAmount) {
+        const m = t.match(/^(\d+(?:\.\d+)?)\s*(GB|TB)$/i);
+        if (m && m[1] === parts.storageAmount && m[2].toUpperCase() === parts.storageUnit) {
+          score = Math.max(score, 160);
+        }
+        const ramM = t.match(/(\d+)\s*GB\s*\/\s*(\d+(?:\.\d+)?)\s*(GB|TB)/i);
+        if (ramM && ramM[2] === parts.storageAmount
+          && ramM[3].toUpperCase() === parts.storageUnit) {
+          score = Math.max(score, 140);
+        }
+      }
+
+      if (parts.storageCompact && c === parts.storageCompact) score = Math.max(score, 150);
+      // Prefer real links (iPhone navigates to variant slug pages)
+      if (n.closest?.('a[href]') || n.tagName === 'A') score += 15;
+      return score;
     };
 
-    const target = sectionNodes.find((n) => matchesStorage(n.innerText || n.textContent || '') && visible(n));
-    if (target) {
-      target.scrollIntoView({ block: 'center', inline: 'center' });
-      target.click();
-      return true;
-    }
-
-    // Fallback: score within section only (never "Top Models" links)
     const scored = sectionNodes
-      .map((n) => {
-        const t = normalize(n.innerText || n.textContent || '');
-        if (!/^\d+\s*GB\s*\/\s*\d+\s*GB$/i.test(t)) return { n, score: 0 };
-        const compact = t.replace(/\s/g, '').toLowerCase();
-        let score = 0;
-        if (storageCompact && compact === storageCompact.replace(/\s/g, '')) score += 100;
-        if (ramGb && storageGb) {
-          const m = t.match(/(\d+)\s*GB\s*\/\s*(\d+)\s*GB/i);
-          if (m && m[1] === ramGb && m[2] === storageGb) score += 120;
-        }
-        return { n, score };
-      })
-      .filter((x) => x.score > 60)
+      .map((n) => ({ n, score: scoreNode(n) }))
+      .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score);
 
-    const fallback = scored[0]?.n;
-    if (!fallback) return false;
-    fallback.scrollIntoView({ block: 'center', inline: 'center' });
-    fallback.click();
-    return true;
-  }, { ramGb, storageGb, storageCompact });
+    const best = scored.find((x) => x.score >= 140) || scored[0];
+    if (!best) return { clicked: false };
 
-  if (clicked) {
+    const clickTarget = best.n.closest?.('a[href]') || best.n;
+    const href = clickTarget.tagName === 'A' ? clickTarget.href : (clickTarget.closest?.('a')?.href || null);
+    clickTarget.scrollIntoView({ block: 'center', inline: 'center' });
+    clickTarget.click();
+    return { clicked: true, href };
+  }, { parts });
+
+  if (!result?.clicked) {
+    for (const label of parts.preferredLabels) {
+      try {
+        await clickLabel(page, label);
+        await page.waitForTimeout(600);
+        return true;
+      } catch {
+        // try next label
+      }
+    }
+    return false;
+  }
+
+  // iPhone-style variants navigate to used-...-12-gb-256-gb pages
+  if (result.href && result.href !== beforeUrl) {
+    try {
+      await page.waitForURL((url) => String(url) !== beforeUrl, { timeout: 8000 });
+    } catch {
+      if (page.url() === beforeUrl) {
+        await page.goto(result.href, { waitUntil: 'domcontentloaded' });
+      }
+    }
+  } else {
     await page.waitForTimeout(800);
-    return true;
   }
 
-  if (ramStorageMatch?.[2]) {
-    return clickLabel(page, `${ramStorageMatch[2].replace(/\s/g, '')}`);
-  }
-  return false;
+  return true;
 }
 
 async function clickYesNoByIndex(page, questionIndex, yes) {
@@ -122,10 +188,124 @@ async function clickYesNoByIndex(page, questionIndex, yes) {
   await page.waitForTimeout(300);
 }
 
+async function clickYesNoNearText(page, questionSnippet, yes) {
+  const clicked = await page.evaluate(({ questionSnippet, yes }) => {
+    const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const wantQ = normalize(questionSnippet).toLowerCase();
+    const wantA = yes ? 'Yes' : 'No';
+    const nodes = [...document.querySelectorAll('div, span, p, h1, h2, h3, h4, label, button')];
+    const qNode = nodes.find((n) => {
+      const t = normalize(n.innerText || '');
+      return t.length < 180 && t.toLowerCase().includes(wantQ) && (n.offsetParent || n.getClientRects().length);
+    });
+    if (!qNode) return false;
+
+    let container = qNode;
+    for (let i = 0; i < 8 && container; i += 1) {
+      const answers = [...container.querySelectorAll('div, span, button, label, p')].filter((n) => {
+        const t = normalize(n.innerText || '');
+        return t === wantA && (n.offsetParent || n.getClientRects().length);
+      });
+      if (answers.length) {
+        const target = answers[answers.length - 1];
+        target.scrollIntoView({ block: 'center' });
+        target.click();
+        return true;
+      }
+      container = container.parentElement;
+    }
+    return false;
+  }, { questionSnippet, yes });
+
+  if (!clicked) {
+    // fallback: leave to index-based caller
+    return false;
+  }
+  await page.waitForTimeout(250);
+  return true;
+}
+
+async function clickLabelNearText(page, questionSnippet, labels) {
+  const list = Array.isArray(labels) ? labels : [labels];
+  for (const label of list) {
+    const clicked = await page.evaluate(({ questionSnippet, label }) => {
+      const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+      const wantQ = normalize(questionSnippet).toLowerCase();
+      const wantA = normalize(label);
+      const nodes = [...document.querySelectorAll('div, span, p, h1, h2, h3, h4, label, button')];
+      const qNode = nodes.find((n) => {
+        const t = normalize(n.innerText || '');
+        return t.length < 220 && t.toLowerCase().includes(wantQ) && (n.offsetParent || n.getClientRects().length);
+      });
+      if (!qNode) return false;
+      let container = qNode;
+      for (let i = 0; i < 8 && container; i += 1) {
+        const answers = [...container.querySelectorAll('div, span, button, label, p, a')].filter((n) => {
+          const t = normalize(n.innerText || '');
+          return t === wantA && (n.offsetParent || n.getClientRects().length);
+        });
+        if (answers.length) {
+          const target = answers[answers.length - 1];
+          target.scrollIntoView({ block: 'center' });
+          target.click();
+          return true;
+        }
+        container = container.parentElement;
+      }
+      return false;
+    }, { questionSnippet, label });
+    if (clicked) {
+      await page.waitForTimeout(250);
+      return true;
+    }
+  }
+  return false;
+}
+
 async function answerGeneralScreen(page, quiz) {
-  await clickYesNoByIndex(page, 0, quiz.ableToMakeCalls !== false);
-  await clickYesNoByIndex(page, 1, quiz.isTouchScreenWorking !== false);
-  await clickYesNoByIndex(page, 2, quiz.isScreenOriginal !== false);
+  const text = await page.locator('body').innerText().catch(() => '');
+  const hasCalls = /make and receive calls/i.test(text);
+  const hasTouch = /touch screen/i.test(text);
+  const hasOriginal = /screen original|original screen/i.test(text);
+  const hasWarranty = /under manufacturer warranty|under warranty/i.test(text);
+  const hasGstBill = /gst valid bill|bill with the same imei/i.test(text);
+  const hasEsimCount = /how many esims|dual esim|single esim/i.test(text);
+
+  // Prefer question-scoped clicks — multiple Yes/No pairs share the same page.
+  if (hasCalls) {
+    const ok = await clickYesNoNearText(page, 'make and receive calls', quiz.ableToMakeCalls !== false);
+    if (!ok) await clickYesNoByIndex(page, 0, quiz.ableToMakeCalls !== false);
+  }
+  if (hasTouch) {
+    const ok = await clickYesNoNearText(page, 'touch screen', quiz.isTouchScreenWorking !== false);
+    if (!ok) await clickYesNoByIndex(page, 1, quiz.isTouchScreenWorking !== false);
+  }
+  if (hasOriginal) {
+    const ok = await clickYesNoNearText(page, 'screen original', quiz.isScreenOriginal !== false);
+    if (!ok) await clickYesNoByIndex(page, 2, quiz.isScreenOriginal !== false);
+  }
+  if (hasWarranty) {
+    const ok = await clickYesNoNearText(page, 'manufacturer warranty', !!quiz.underWarranty);
+    if (!ok) await clickYesNoByIndex(page, 3, !!quiz.underWarranty);
+  }
+  if (hasGstBill) {
+    const accessories = quiz.accessories || [];
+    const hasBill = Array.isArray(accessories)
+      ? accessories.some((a) => /bill/i.test(String(a)))
+      : /bill/i.test(String(accessories));
+    // Always answer bill — Cashify requires it even when out of warranty.
+    const wantBill = !!quiz.underWarranty && hasBill;
+    // Avoid matching warranty help text that also mentions "GST valid bill".
+    let ok = await clickYesNoNearText(page, 'Do you have GST valid bill', wantBill);
+    if (!ok) ok = await clickYesNoNearText(page, 'bill with the same IMEI', wantBill);
+    if (!ok) await clickYesNoByIndex(page, 4, wantBill);
+  }
+  if (hasEsimCount) {
+    const mode = String(quiz.eSIMSupport || quiz.esimSupport || '').toLowerCase();
+    const dual = /dual/.test(mode);
+    await clickLabelNearText(page, 'eSIM', dual ? ['Dual eSIM'] : ['Single eSIM']);
+  }
+
   await page.waitForTimeout(400);
   await clickContinue(page);
 }
@@ -141,7 +321,9 @@ async function questionHead(page) {
   const text = await page.locator('body').innerText().catch(() => '');
   const moreIdx = text.indexOf('\nMore\n');
   if (moreIdx < 0) return text.slice(0, 500);
-  const afterMore = text.slice(moreIdx + 6);
+  let afterMore = text.slice(moreIdx + 6);
+  // Strip validation toasts that appear above the quiz card
+  afterMore = afterMore.replace(/Please answer the .*?\n+/gi, '');
   const stops = ['\nContinue\n', '\nDevice Evaluation\n', '\nFollow us on\n'];
   let end = afterMore.length;
   for (const stop of stops) {

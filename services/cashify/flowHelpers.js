@@ -213,6 +213,53 @@ export async function startCalculator(page) {
   await page.waitForTimeout(2000);
   await dismissBlockingOverlays(page);
 
+  // If Get Exact Value is disabled, a variant must be selected first (iPhone storage-only, etc.)
+  const exactDisabled = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll('button, a, div, span')];
+    const btn = nodes.find((n) => /^get exact value/i.test(String(n.innerText || '').trim()));
+    if (!btn) return false;
+    if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return true;
+    const cls = `${btn.className || ''} ${btn.parentElement?.className || ''}`.toLowerCase();
+    return /disabled|opacity-50|cursor-not-allowed|pointer-events-none/.test(cls);
+  }).catch(() => false);
+
+  if (exactDisabled) {
+    const href = await page.evaluate(() => {
+      const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+      const visible = (n) => n && (n.offsetParent || n.getClientRects().length);
+      const nodes = [...document.querySelectorAll('a, div, span, button, p, li, label')];
+      const headerIdx = nodes.findIndex((n) => /choose a variant/i.test(normalize(n.innerText)));
+      let endIdx = nodes.length;
+      if (headerIdx >= 0) {
+        const nextIdx = nodes.findIndex((n, i) => i > headerIdx && /get exact value|top selling|top models/i.test(normalize(n.innerText)));
+        if (nextIdx >= 0) endIdx = nextIdx;
+      }
+      const section = headerIdx >= 0 ? nodes.slice(headerIdx, endIdx) : nodes;
+      const option = section.find((n) => {
+        const t = normalize(n.innerText || '');
+        return t.length <= 40
+          && (/^\d+\s*GB\s*\/\s*\d+(?:\.\d+)?\s*(GB|TB)$/i.test(t) || /^\d+(?:\.\d+)?\s*(GB|TB)$/i.test(t))
+          && visible(n);
+      });
+      if (!option) return null;
+      const link = option.closest?.('a[href]') || (option.tagName === 'A' ? option : null);
+      const target = link || option;
+      target.scrollIntoView({ block: 'center' });
+      target.click();
+      return link?.href || null;
+    });
+    if (href) {
+      try {
+        await page.waitForURL((url) => String(url).includes(new URL(href).pathname.split('/').pop()), { timeout: 8000 });
+      } catch {
+        if (!/calculator|pageId=/.test(page.url())) {
+          await page.goto(href, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        }
+      }
+    }
+    await page.waitForTimeout(800);
+  }
+
   const bodyText = await page.locator('body').innerText().catch(() => '');
 
   if (/page not found|404|something went wrong|no longer available/i.test(bodyText)) {
@@ -220,7 +267,18 @@ export async function startCalculator(page) {
   }
 
   const clickStrategies = [
-    async () => page.getByRole('button', { name: /get exact value/i }).first().click({ timeout: 6000, force: true }),
+    async () => {
+      const btn = page.getByRole('button', { name: /get exact value/i }).first();
+      await btn.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+      await page.waitForFunction(() => {
+        const nodes = [...document.querySelectorAll('button, a')];
+        const el = nodes.find((n) => /get exact value/i.test(String(n.innerText || '').trim()));
+        if (!el) return false;
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+        return true;
+      }, { timeout: 8000 }).catch(() => {});
+      await btn.click({ timeout: 6000, force: true });
+    },
     async () => page.getByRole('link', { name: /get exact value/i }).first().click({ timeout: 6000, force: true }),
     async () => page.locator('text=/get exact value/i').first().click({ timeout: 6000, force: true }),
     async () => page.locator('a[href*="calculator"], a[href*="pageId="]').first().click({ timeout: 6000, force: true }),

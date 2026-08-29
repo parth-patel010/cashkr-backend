@@ -1,6 +1,6 @@
 import PricingQuizRecord from '../models/PricingQuizRecord.js';
 import {
-  requestLaptopValuation,
+  requestDeviceValuation,
   serializePricingRecord,
 } from '../utils/pricingQuizService.js';
 import { getAgentQueueStats, getQueuePosition } from '../services/cashify/batchWorker.js';
@@ -17,7 +17,7 @@ function displayStatus(status) {
   return status === 'skipped' ? 'overridden' : status;
 }
 
-export async function submitLaptopValuation(req, res, next) {
+async function submitCategoryValuation(req, res, next, category) {
   try {
     const {
       slug,
@@ -32,8 +32,9 @@ export async function submitLaptopValuation(req, res, next) {
       return res.status(400).json({ message: 'slug and quizPayload are required' });
     }
 
-    const result = await requestLaptopValuation({
+    const result = await requestDeviceValuation({
       slug,
+      category,
       quizPayload: { ...quizPayload, slug },
       quizSummary: Array.isArray(quizSummary) ? quizSummary : [],
       userId: req.user?.id,
@@ -64,7 +65,23 @@ export async function submitLaptopValuation(req, res, next) {
   }
 }
 
+export async function submitLaptopValuation(req, res, next) {
+  return submitCategoryValuation(req, res, next, 'laptop');
+}
+
+export async function submitMobileValuation(req, res, next) {
+  return submitCategoryValuation(req, res, next, 'mobile');
+}
+
 export async function getLaptopValuationStatus(req, res, next) {
+  return getValuationStatus(req, res, next);
+}
+
+export async function getMobileValuationStatus(req, res, next) {
+  return getValuationStatus(req, res, next);
+}
+
+async function getValuationStatus(req, res, next) {
   try {
     const { recordId } = req.params;
     const record = await PricingQuizRecord.findById(recordId).lean();
@@ -109,6 +126,11 @@ export async function getLaptopValuationStatus(req, res, next) {
 }
 
 export async function getLaptopValuationAgentStatus(req, res) {
+  const queue = await getAgentQueueStats();
+  res.json(queue);
+}
+
+export async function getMobileValuationAgentStatus(req, res) {
   const queue = await getAgentQueueStats();
   res.json(queue);
 }

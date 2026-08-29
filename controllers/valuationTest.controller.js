@@ -1,9 +1,10 @@
 import Device from '../models/Device.js';
 import AgentTestRun from '../models/AgentTestRun.js';
-import config, { buildCashifyProductUrlCandidates } from '../config/cashify.js';
+import { buildCashifyProductUrlCandidates } from '../config/cashify.js';
 import { calculateLaptopPrice } from '../utils/laptopPriceCalculator.js';
 import { calculateMobilePrice } from '../utils/mobilePriceCalculator.js';
 import { buildAgentTestRunsWorkbook, serializeAgentTestRuns } from '../utils/agentTestRunExport.js';
+import { computeOurOfferFromSettings } from '../utils/offerMarkup.js';
 
 /** Lazy-load Playwright stack so the rest of the API keeps running if it is missing on the VPS. */
 async function getCashifyServices() {
@@ -320,7 +321,7 @@ export const runValuationTestQuote = async (req, res, next) => {
           });
           const resolvedUrl = flowResult.productUrl || productUrl;
           const ourOffer = flowResult.cashifyPrice
-            ? flowResult.cashifyPrice + config.MARKUP_INR
+            ? await computeOurOfferFromSettings(flowResult.cashifyPrice, category)
             : null;
           cashifyResult = {
             supported: true,
@@ -340,12 +341,15 @@ export const runValuationTestQuote = async (req, res, next) => {
           const urlsTried = flowError.productUrlsTried
             || flowError.debugArtifacts?.productUrlsTried
             || productUrls.map((url) => ({ url }));
+          const failOffer = flowError.cashifyPrice
+            ? await computeOurOfferFromSettings(flowError.cashifyPrice, category)
+            : null;
           cashifyResult = {
             supported: true,
             productUrl: resolvedUrl,
             productUrlsTried: urlsTried,
             cashifyPrice: flowError.cashifyPrice || null,
-            ourOffer: flowError.cashifyPrice ? flowError.cashifyPrice + config.MARKUP_INR : null,
+            ourOffer: failOffer,
             error: msg,
             note: flowError.note || null,
             debugArtifacts: flowError.debugArtifacts || null,
@@ -363,7 +367,9 @@ export const runValuationTestQuote = async (req, res, next) => {
       cashifyPrice: cashifyResult?.cashifyPrice ?? null,
       ourOffer: cashifyOffer,
       difference: cashifyOffer != null ? internalPrice - cashifyOffer : null,
-      markupInr: config.MARKUP_INR,
+      markupInr: cashifyOffer != null && cashifyResult?.cashifyPrice != null
+        ? cashifyOffer - cashifyResult.cashifyPrice
+        : null,
     };
 
     const runDoc = await AgentTestRun.create({

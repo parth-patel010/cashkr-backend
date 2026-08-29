@@ -98,6 +98,8 @@ import {
   syncPricingAgent,
   runAllPricingAgent,
   exportPricingAgent,
+  getPricingAgentSettings,
+  savePricingAgentSettings,
 } from '../controllers/pricingAgent.controller.js';
 import { adminSecurityAudit } from '../controllers/security.controller.js';
 
@@ -269,6 +271,8 @@ router.get('/pricing-agent/stats', getPricingAgentStats);
 router.get('/pricing-agent/records', getPricingAgentRecords);
 router.post('/pricing-agent/sync', syncPricingAgent);
 router.post('/pricing-agent/run-all', runAllPricingAgent);
+router.get('/pricing-agent/settings', getPricingAgentSettings);
+router.put('/pricing-agent/settings', savePricingAgentSettings);
 router.get('/pricing-agent/export', exportPricingAgent);
 
 export default router;

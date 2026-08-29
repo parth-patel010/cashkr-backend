@@ -3,11 +3,12 @@ import Device from '../../models/Device.js';
 import AgentTestRun from '../../models/AgentTestRun.js';
 import User from '../../models/User.js';
 import Order from '../../models/Order.js';
-import config, { buildCashifyProductUrlCandidates } from '../../config/cashify.js';
+import { buildCashifyProductUrlCandidates } from '../../config/cashify.js';
 import { findCompletedByHash, serializePricingRecord } from '../../utils/pricingQuizService.js';
 import { upsertPricingQuizRecord } from '../../utils/pricingQuizService.js';
 import { hasFilledQuizFromSource, hasMeaningfulQuizSummary, pricingAgentEligibleFilter } from '../../utils/quizFilled.js';
 import { buildQuizSummaryFromPayload } from '../../utils/buildQuizSummary.js';
+import { computeOurOfferFromSettings } from '../../utils/offerMarkup.js';
 
 const POLL_MS = 5000;
 let workerTimer = null;
@@ -85,10 +86,13 @@ async function processOneRecord(record) {
     });
 
     const cashifyPrice = flowResult.cashifyPrice;
-    const ourOffer = cashifyPrice ? cashifyPrice + config.MARKUP_INR : null;
+    const ourOffer = cashifyPrice
+      ? await computeOurOfferFromSettings(cashifyPrice, category)
+      : null;
     const internalPrice = record.internalPrice;
     const difference = ourOffer != null && internalPrice != null ? internalPrice - ourOffer : null;
     const agentStatus = flowResult.loginRequired || flowResult.note ? 'partial' : 'completed';
+    const markupInr = ourOffer != null && cashifyPrice != null ? ourOffer - cashifyPrice : null;
 
     await PricingQuizRecord.findByIdAndUpdate(record._id, {
       agentStatus,
@@ -121,7 +125,7 @@ async function processOneRecord(record) {
         cashifyPrice,
         ourOffer,
         difference,
-        markupInr: config.MARKUP_INR,
+        markupInr,
       },
       status: agentStatus,
       runBy: 'pricing-agent-worker',
@@ -132,12 +136,15 @@ async function processOneRecord(record) {
     const productUrlsTried = error.productUrlsTried
       || error.debugArtifacts?.productUrlsTried
       || productUrls.map((url) => ({ url }));
+    const failOffer = error.cashifyPrice
+      ? await computeOurOfferFromSettings(error.cashifyPrice, category)
+      : null;
     await PricingQuizRecord.findByIdAndUpdate(record._id, {
       agentStatus: error.cashifyPrice ? 'partial' : 'failed',
       cashifyPrice: error.cashifyPrice || null,
-      ourOffer: error.cashifyPrice ? error.cashifyPrice + config.MARKUP_INR : null,
-      difference: error.cashifyPrice && record.internalPrice
-        ? record.internalPrice - (error.cashifyPrice + config.MARKUP_INR)
+      ourOffer: failOffer,
+      difference: failOffer != null && record.internalPrice != null
+        ? record.internalPrice - failOffer
         : null,
       error: msg,
       note: productUrlsTried.length
@@ -157,7 +164,7 @@ async function processOneRecord(record) {
       internalResult: { finalPrice: record.internalPrice },
       cashifyResult: {
         cashifyPrice: error.cashifyPrice || null,
-        ourOffer: error.cashifyPrice ? error.cashifyPrice + config.MARKUP_INR : null,
+        ourOffer: failOffer,
         productUrl: productUrls[0] || '',
         note: msg,
         productUrlsTried,
@@ -165,9 +172,13 @@ async function processOneRecord(record) {
       comparison: {
         internalPrice: record.internalPrice,
         cashifyPrice: error.cashifyPrice || null,
-        ourOffer: error.cashifyPrice ? error.cashifyPrice + config.MARKUP_INR : null,
-        difference: null,
-        markupInr: config.MARKUP_INR,
+        ourOffer: failOffer,
+        difference: failOffer != null && record.internalPrice != null
+          ? record.internalPrice - failOffer
+          : null,
+        markupInr: failOffer != null && error.cashifyPrice != null
+          ? failOffer - error.cashifyPrice
+          : null,
       },
       status: error.cashifyPrice ? 'partial' : 'failed',
       runBy: 'pricing-agent-worker',

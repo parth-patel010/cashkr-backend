@@ -82,6 +82,25 @@ const appSettingsSchema = new mongoose.Schema(
     },
     iosMinVersion: { type: String, default: '' },
     iosDownloadUrl: { type: String, default: '' },
+    pricingAgent: {
+      mobileBrackets: {
+        type: [{
+          min: { type: Number, default: 0 },
+          max: { type: Number, default: null },
+          percent: { type: Number, default: 0 },
+        }],
+        default: undefined,
+      },
+      laptopBrackets: {
+        type: [{
+          min: { type: Number, default: 0 },
+          max: { type: Number, default: null },
+          percent: { type: Number, default: 0 },
+        }],
+        default: undefined,
+      },
+      fallbackFixedInr: { type: Number, default: 1000 },
+    },
   },
   { timestamps: true },
 );
