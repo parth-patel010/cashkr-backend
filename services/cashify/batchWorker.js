@@ -169,7 +169,7 @@ async function processOneRecord(record) {
     }
 
     const category = record.category;
-    const productUrls = buildCashifyProductUrlCandidates(device);
+    const productUrls = buildCashifyProductUrlCandidates(device, { storage: record.storage });
     if (!productUrls.length) {
       await finalizeRunning({
         agentStatus: 'failed',

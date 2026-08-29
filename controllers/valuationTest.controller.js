@@ -301,7 +301,7 @@ export const runValuationTestQuote = async (req, res, next) => {
     let error = null;
 
     if (category === 'mobile' || category === 'laptop' || category === 'mac') {
-      const productUrls = buildCashifyProductUrlCandidates(device);
+      const productUrls = buildCashifyProductUrlCandidates(device, { storage: quizPayload.storage });
       const productUrl = productUrls[0] || '';
       if (!productUrl) {
         cashifyResult = {

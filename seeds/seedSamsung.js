@@ -1371,7 +1371,7 @@ const devices = [
         category: "mobile",
         brand: "Samsung",
         modelName: "Samsung Galaxy S21 FE 5G",
-        slug: "samsung-samsung-galaxy-s21-fe-5g",
+        slug: "samsung-galaxy-s21-fe-5g",
         imageUrl: "https://fdn2.gsmarena.com/vv/pics/samsung/samsung-galaxy-s21-fe-5g-1.jpg",
         variants: [
             { storage: "8GB / 128GB", basePrice: 10630 },

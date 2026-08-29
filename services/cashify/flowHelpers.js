@@ -399,10 +399,19 @@ function scoreListingLink(href, slugHints = [], pathPattern = /\/sell-old-laptop
   if (!pathSlug) return -1;
 
   let score = 0;
+  const pathTokens = pathSlug.toLowerCase().split('-').filter(Boolean);
   for (const hint of slugHints) {
     if (!hint) continue;
     if (pathSlug === hint) score = Math.max(score, 1000);
-    else if (pathSlug.includes(hint) || hint.includes(pathSlug)) score = Math.max(score, 500 - Math.abs(pathSlug.length - hint.length));
+    else if (pathSlug.includes(hint) || hint.includes(pathSlug)) {
+      score = Math.max(score, 500 - Math.abs(pathSlug.length - hint.length));
+    }
+    const hintTokens = String(hint).toLowerCase().split('-').filter(Boolean);
+    const shared = hintTokens.filter((token) => pathTokens.includes(token)).length;
+    const minLen = Math.min(pathTokens.length, hintTokens.length);
+    if (shared >= 2 && shared >= minLen - 1) {
+      score = Math.max(score, 350 + shared * 25);
+    }
   }
   return score;
 }
@@ -508,7 +517,9 @@ async function discoverFromMobileBrandListing(page, device) {
 export async function openProductPage(page, productUrls, categoryLabel = 'device', device = null) {
   const urls = [...new Set((productUrls || []).filter(Boolean))];
   if (!urls.length && device) {
-    urls.push(...buildCashifyProductUrlCandidates(device));
+    urls.push(...buildCashifyProductUrlCandidates(device, {
+      storage: device.preferredStorage || device.storage || '',
+    }));
   }
   if (!urls.length) {
     throw new Error(`Cashify product URL is required for ${categoryLabel} valuation.`);
