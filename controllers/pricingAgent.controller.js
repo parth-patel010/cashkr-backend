@@ -9,6 +9,7 @@ import {
 } from '../utils/pricingAgentExport.js';
 import {
   enqueueAllPending,
+  enqueueOneRecord,
   syncPricingRecordsFromSources,
   startPricingAgentWorker,
 } from '../services/cashify/batchWorker.js';
@@ -74,6 +75,26 @@ export const runAllPricingAgent = async (req, res, next) => {
   try {
     startPricingAgentWorker();
     const result = await enqueueAllPending();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const runOnePricingAgent = async (req, res, next) => {
+  try {
+    const { recordId } = req.params;
+    if (!recordId) {
+      return res.status(400).json({ message: 'recordId is required' });
+    }
+    startPricingAgentWorker();
+    const result = await enqueueOneRecord(recordId);
+    if (result.error === 'NOT_FOUND') {
+      return res.status(404).json({ message: result.message });
+    }
+    if (result.error) {
+      return res.status(400).json({ message: result.message });
+    }
     res.json(result);
   } catch (error) {
     next(error);

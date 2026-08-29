@@ -322,7 +322,7 @@ async function answerCurrentQuestion(page, quiz, modelName) {
   return kind;
 }
 
-export async function runLaptopFlow(quiz, { productUrl, productUrls, modelName = '' } = {}) {
+export async function runLaptopFlow(quiz, { productUrl, productUrls, modelName = '', device: deviceArg = null } = {}) {
   const urls = productUrls?.length
     ? productUrls
     : productUrl
@@ -332,7 +332,7 @@ export async function runLaptopFlow(quiz, { productUrl, productUrls, modelName =
     throw new Error('Cashify product URL is required for laptop valuation.');
   }
 
-  const device = {
+  const device = deviceArg || {
     slug: quiz.slug,
     brand: quiz.brand,
     modelName: modelName || quiz.modelName,

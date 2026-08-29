@@ -353,11 +353,11 @@ export async function pageLooksLikeProductListing(page) {
   return /get exact value|get upto|choose a variant/i.test(text);
 }
 
-function scoreListingLink(href, slugHints = []) {
+function scoreListingLink(href, slugHints = [], pathPattern = /\/sell-old-laptop\/used-([^/?#]+)/i) {
   let pathSlug = '';
   try {
     const { pathname } = new URL(href);
-    const match = pathname.match(/\/sell-old-laptop\/used-([^/?#]+)/i);
+    const match = pathname.match(pathPattern);
     pathSlug = match?.[1] || '';
   } catch {
     return -1;
@@ -373,23 +373,28 @@ function scoreListingLink(href, slugHints = []) {
   return score;
 }
 
-async function discoverFromBrandListing(page, device) {
+async function discoverFromBrandListing(page, device, options = {}) {
+  const {
+    listingPathPrefix = '/sell-old-laptop/',
+    productLinkPattern = '/sell-old-laptop/used-',
+    productPathPattern = /\/sell-old-laptop\/used-([^/?#]+)/i,
+  } = options;
   const listingSlug = getBrandListingSlug(device?.brand);
   if (!listingSlug || !device) return null;
 
   const slugHints = slugVariants(device.slug, device.brand, device.modelName);
-  const listingUrl = `https://www.cashify.in/sell-old-laptop/${listingSlug}`;
+  const listingUrl = `https://www.cashify.in${listingPathPrefix}${listingSlug}`;
 
   try {
     await page.goto(listingUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1500);
 
-    const links = await page.evaluate(() => [...document.querySelectorAll('a[href*="/sell-old-laptop/used-"]')]
+    const links = await page.evaluate((pattern) => [...document.querySelectorAll(`a[href*="${pattern}"]`)]
       .map((el) => el.href)
-      .filter(Boolean));
+      .filter(Boolean), productLinkPattern);
 
     const ranked = [...new Set(links)]
-      .map((href) => ({ href, score: scoreListingLink(href, slugHints) }))
+      .map((href) => ({ href, score: scoreListingLink(href, slugHints, productPathPattern) }))
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score);
 
@@ -402,6 +407,65 @@ async function discoverFromBrandListing(page, device) {
     }
   } catch {
     // fall through
+  }
+
+  return null;
+}
+
+async function discoverFromMobileBrandListing(page, device) {
+  const slugHints = slugVariants(device.slug, device.brand, device.modelName);
+  const listingSlug = getBrandListingSlug(device?.brand);
+  if (!listingSlug || !device) return null;
+
+  const listingBases = [
+    '/sell-old-mobile-phones/',
+    '/sell-old-mobile-phone/',
+  ];
+  const productPatterns = [
+    {
+      listingPathPrefix: '/sell-old-mobile-phones/',
+      productLinkPattern: '/sell-old-mobile-phones/used-',
+      productPathPattern: /\/sell-old-mobile-phones\/used-([^/?#]+)/i,
+    },
+    {
+      listingPathPrefix: '/sell-old-mobile-phone/',
+      productLinkPattern: '/sell-old-mobile-phone/used-',
+      productPathPattern: /\/sell-old-mobile-phone\/used-([^/?#]+)/i,
+    },
+  ];
+
+  for (const pattern of productPatterns) {
+    const discovered = await discoverFromBrandListing(page, device, pattern);
+    if (discovered) return discovered;
+  }
+
+  // Mixed listing: phone brand page may link to either URL shape.
+  for (const base of listingBases) {
+    const listingUrl = `https://www.cashify.in${base}${listingSlug}`;
+    try {
+      await page.goto(listingUrl, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(1500);
+      const links = await page.evaluate(() => [
+        ...document.querySelectorAll('a[href*="/sell-old-mobile-phone/used-"], a[href*="/sell-old-mobile-phones/used-"]'),
+      ].map((el) => el.href).filter(Boolean));
+      const ranked = [...new Set(links)]
+        .map((href) => ({
+          href,
+          score: Math.max(
+            scoreListingLink(href, slugHints, /\/sell-old-mobile-phone\/used-([^/?#]+)/i),
+            scoreListingLink(href, slugHints, /\/sell-old-mobile-phones\/used-([^/?#]+)/i),
+          ),
+        }))
+        .filter((entry) => entry.score > 0)
+        .sort((a, b) => b.score - a.score);
+      for (const { href } of ranked.slice(0, 8)) {
+        await page.goto(href, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(1500);
+        if (await pageLooksLikeProductListing(page)) return href;
+      }
+    } catch {
+      // try next base
+    }
   }
 
   return null;
@@ -454,6 +518,26 @@ export async function openProductPage(page, productUrls, categoryLabel = 'device
       valid: false,
       reason: 'brand listing page had no matching product link',
     });
+  }
+
+  if (device && (categoryLabel === 'mobile' || device.category === 'mobile')) {
+    const discovered = await discoverFromMobileBrandListing(page, device);
+    if (discovered) {
+      productUrlsTried.push({ url: discovered, valid: true, reason: 'matched via mobile brand listing page' });
+      return {
+        productUrl: discovered,
+        productMaxPrice: parseRupees(await page.locator('body').innerText()),
+        productUrlsTried,
+      };
+    }
+    const listingSlug = getBrandListingSlug(device.brand);
+    if (listingSlug) {
+      productUrlsTried.push({
+        url: `https://www.cashify.in/sell-old-mobile-phones/${listingSlug}`,
+        valid: false,
+        reason: 'mobile brand listing page had no matching product link',
+      });
+    }
   }
 
   const triedList = productUrlsTried.map((entry) => entry.url).join(', ');

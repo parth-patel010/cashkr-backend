@@ -10,8 +10,8 @@ import { buildQuizSummaryFromPayload } from '../../utils/buildQuizSummary.js';
 import { computeOurOfferFromSettings } from '../../utils/offerMarkup.js';
 
 const POLL_MS = 5000;
-/** Re-queue jobs stuck in `running` (crashed worker / lock contention). */
-const STALE_RUNNING_MS = 12 * 60 * 1000;
+/** Re-queue jobs stuck in `running` (crashed worker / hung Playwright). */
+const STALE_RUNNING_MS = 3 * 60 * 1000;
 /** Highest catalog basePrice first; FIFO within the same base. */
 const QUEUE_SORT = { basePrice: -1, createdAt: 1, _id: 1 };
 
@@ -36,6 +36,8 @@ function isAgentBusyError(message) {
     || msg.includes('try again in a moment')
     || msg.includes('agent is busy')
     || msg.includes('valuation agent is busy')
+    || msg.includes('timed out')
+    || msg.includes('re-queued')
   );
 }
 
@@ -131,51 +133,59 @@ async function getCashifyServices() {
 
 async function processOneRecord(record) {
   const started = Date.now();
-  const device = await Device.findOne({ slug: record.slug, isActive: true });
-  if (!device) {
-    await PricingQuizRecord.findByIdAndUpdate(record._id, {
-      agentStatus: 'failed',
-      error: 'Device not found in catalog.',
-      completedAt: new Date(),
-      durationMs: Date.now() - started,
-    });
-    return;
-  }
+  let finished = false;
 
-  const cached = await findCompletedByHash(record.slug, record.quizHash);
-  if (cached && String(cached._id) !== String(record._id)) {
-    await PricingQuizRecord.findByIdAndUpdate(record._id, {
-      agentStatus: 'overridden',
-      cashifyPrice: cached.cashifyPrice,
-      ourOffer: cached.ourOffer,
-      difference: cached.difference,
-      cashifyProductUrl: cached.cashifyProductUrl || '',
-      overriddenFromRecordId: String(cached._id),
-      note: 'Quiz overridden — same quiz always returns this locked price.',
-      completedAt: new Date(),
-      durationMs: Date.now() - started,
-    });
-    return;
-  }
-
-  const category = record.category;
-  const productUrls = buildCashifyProductUrlCandidates(device);
-  if (!productUrls.length) {
-    await PricingQuizRecord.findByIdAndUpdate(record._id, {
-      agentStatus: 'failed',
-      error: 'No Cashify URL for this device.',
-      completedAt: new Date(),
-      durationMs: Date.now() - started,
-    });
-    return;
-  }
+  const finalizeRunning = async (patch) => {
+    finished = true;
+    await PricingQuizRecord.findByIdAndUpdate(record._id, patch);
+  };
 
   try {
+    const device = await Device.findOne({ slug: record.slug, isActive: true });
+    if (!device) {
+      await finalizeRunning({
+        agentStatus: 'failed',
+        error: 'Device not found in catalog.',
+        completedAt: new Date(),
+        durationMs: Date.now() - started,
+      });
+      return;
+    }
+
+    const cached = await findCompletedByHash(record.slug, record.quizHash);
+    if (cached && String(cached._id) !== String(record._id)) {
+      await finalizeRunning({
+        agentStatus: 'overridden',
+        cashifyPrice: cached.cashifyPrice,
+        ourOffer: cached.ourOffer,
+        difference: cached.difference,
+        cashifyProductUrl: cached.cashifyProductUrl || '',
+        overriddenFromRecordId: String(cached._id),
+        note: 'Quiz overridden — same quiz always returns this locked price.',
+        completedAt: new Date(),
+        durationMs: Date.now() - started,
+      });
+      return;
+    }
+
+    const category = record.category;
+    const productUrls = buildCashifyProductUrlCandidates(device);
+    if (!productUrls.length) {
+      await finalizeRunning({
+        agentStatus: 'failed',
+        error: 'No Cashify URL for this device.',
+        completedAt: new Date(),
+        durationMs: Date.now() - started,
+      });
+      return;
+    }
+
     const { runLaptopFlow, runMobileFlow } = await getCashifyServices();
     const runFlow = category === 'mobile' ? runMobileFlow : runLaptopFlow;
     const flowResult = await runFlow(record.quizPayload, {
       productUrls,
       modelName: device.modelName,
+      device,
     });
 
     const cashifyPrice = flowResult.cashifyPrice;
@@ -187,7 +197,7 @@ async function processOneRecord(record) {
     const agentStatus = flowResult.loginRequired || flowResult.note ? 'partial' : 'completed';
     const markupInr = ourOffer != null && cashifyPrice != null ? ourOffer - cashifyPrice : null;
 
-    await PricingQuizRecord.findByIdAndUpdate(record._id, {
+    await finalizeRunning({
       agentStatus,
       cashifyPrice,
       ourOffer,
@@ -227,19 +237,20 @@ async function processOneRecord(record) {
   } catch (error) {
     const msg = cleanPlaywrightError(error.message);
 
-    // Never surface "agent busy" as a user-facing failure — put job back in the priority queue.
     if (isAgentBusyError(msg) && !error.cashifyPrice) {
       await requeueBusyRecord(record._id, msg);
+      finished = true;
       return;
     }
 
     const productUrlsTried = error.productUrlsTried
       || error.debugArtifacts?.productUrlsTried
-      || productUrls.map((url) => ({ url }));
+      || [];
     const failOffer = error.cashifyPrice
-      ? await computeOurOfferFromSettings(error.cashifyPrice, category)
+      ? await computeOurOfferFromSettings(error.cashifyPrice, record.category)
       : null;
-    await PricingQuizRecord.findByIdAndUpdate(record._id, {
+
+    await finalizeRunning({
       agentStatus: error.cashifyPrice ? 'partial' : 'failed',
       cashifyPrice: error.cashifyPrice || null,
       ourOffer: failOffer,
@@ -255,17 +266,17 @@ async function processOneRecord(record) {
     });
 
     await AgentTestRun.create({
-      category,
-      brand: device.brand,
-      modelName: device.modelName,
-      slug: device.slug,
+      category: record.category,
+      brand: record.brand,
+      modelName: record.modelName,
+      slug: record.slug,
       storage: record.storage || '',
       quizPayload: record.quizPayload,
       internalResult: { finalPrice: record.internalPrice },
       cashifyResult: {
         cashifyPrice: error.cashifyPrice || null,
         ourOffer: failOffer,
-        productUrl: productUrls[0] || '',
+        productUrl: productUrlsTried[0]?.url || '',
         note: msg,
         productUrlsTried,
       },
@@ -294,7 +305,7 @@ async function workerTick() {
     await recoverStaleRunningRecords();
     const record = await PricingQuizRecord.findOneAndUpdate(
       { agentStatus: 'pending', ...pricingAgentEligibleFilter() },
-      { $set: { agentStatus: 'running', runAt: new Date(), error: null } },
+      { $set: { agentStatus: 'running', runAt: new Date(), error: null, note: null, completedAt: null } },
       { sort: QUEUE_SORT, new: true },
     );
     if (record) {
@@ -360,6 +371,76 @@ export async function getQueuePosition(recordId) {
   return ahead + 1;
 }
 
+export async function enqueueOneRecord(recordId) {
+  const record = await PricingQuizRecord.findById(recordId);
+  if (!record) {
+    return { error: 'NOT_FOUND', message: 'Record not found.' };
+  }
+
+  const eligible = await PricingQuizRecord.findOne({
+    _id: recordId,
+    ...pricingAgentEligibleFilter(),
+  }).lean();
+  if (!eligible) {
+    return { error: 'INELIGIBLE', message: 'This row has no filled quiz — sync or complete a quiz first.' };
+  }
+
+  const cached = await findCompletedByHash(record.slug, record.quizHash);
+  if (cached && String(cached._id) !== String(record._id)) {
+    await PricingQuizRecord.findByIdAndUpdate(record._id, {
+      agentStatus: 'overridden',
+      cashifyPrice: cached.cashifyPrice,
+      ourOffer: cached.ourOffer,
+      difference: cached.difference,
+      cashifyProductUrl: cached.cashifyProductUrl || '',
+      overriddenFromRecordId: String(cached._id),
+      note: 'Quiz overridden — same quiz always returns this locked price.',
+      completedAt: cached.completedAt || new Date(),
+      error: null,
+    });
+    return {
+      status: 'overridden',
+      message: 'Same quiz already completed — locked to existing override price.',
+      recordId: String(record._id),
+      queuePosition: 0,
+    };
+  }
+
+  const patch = {
+    agentStatus: 'pending',
+    error: null,
+    note: null,
+    completedAt: null,
+    runAt: null,
+    durationMs: 0,
+  };
+
+  if (!(Number(record.basePrice) > 0)) {
+    const device = await Device.findOne({ slug: record.slug, isActive: true }).lean();
+    if (device) {
+      const internal = computeInternalPrice(
+        device,
+        record.quizPayload || {},
+        record.category,
+      );
+      if (internal?.basePrice != null) patch.basePrice = Number(internal.basePrice) || 0;
+      if (record.internalPrice == null && internal?.finalPrice != null) {
+        patch.internalPrice = internal.finalPrice;
+      }
+    }
+  }
+
+  await PricingQuizRecord.findByIdAndUpdate(record._id, patch);
+  const queuePosition = await getQueuePosition(record._id);
+
+  return {
+    status: 'pending',
+    message: 'Queued for Cashify valuation.',
+    recordId: String(record._id),
+    queuePosition,
+  };
+}
+
 export async function enqueueAllPending() {
   const records = await PricingQuizRecord.find({
     agentStatus: { $in: ['failed', 'running'] },
@@ -370,7 +451,13 @@ export async function enqueueAllPending() {
 
   for (const record of records) {
     if (record.agentStatus === 'running') {
-      await PricingQuizRecord.findByIdAndUpdate(record._id, { agentStatus: 'pending' });
+      await PricingQuizRecord.findByIdAndUpdate(record._id, {
+        agentStatus: 'pending',
+        note: null,
+        error: null,
+        runAt: null,
+        completedAt: null,
+      });
     }
   }
 
@@ -394,7 +481,13 @@ export async function enqueueAllPending() {
       });
       skipped += 1;
     } else {
-      const patch = { agentStatus: 'pending', error: null };
+      const patch = {
+        agentStatus: 'pending',
+        error: null,
+        note: null,
+        completedAt: null,
+        runAt: null,
+      };
       if (!(Number(record.basePrice) > 0)) {
         const device = await Device.findOne({ slug: record.slug, isActive: true }).lean();
         if (device) {

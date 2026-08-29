@@ -599,7 +599,7 @@ async function answerCurrentMobileQuestion(page, quiz, modelName) {
   return kind;
 }
 
-export async function runMobileFlow(quiz, { productUrl, productUrls, modelName = '' } = {}) {
+export async function runMobileFlow(quiz, { productUrl, productUrls, modelName = '', device: deviceArg = null } = {}) {
   const urls = productUrls?.length
     ? productUrls
     : productUrl
@@ -608,6 +608,14 @@ export async function runMobileFlow(quiz, { productUrl, productUrls, modelName =
   if (!urls.length) {
     throw new Error('Cashify product URL is required for mobile valuation.');
   }
+
+  const device = deviceArg || {
+    slug: quiz.slug,
+    brand: quiz.brand,
+    modelName: modelName || quiz.modelName,
+    category: 'mobile',
+    cashifyProductUrl: quiz.cashifyProductUrl || '',
+  };
 
   acquireQuoteLock();
   const screenshotDir = config.SCREENSHOT_DIR;
@@ -639,10 +647,10 @@ export async function runMobileFlow(quiz, { productUrl, productUrls, modelName =
   });
 
   try {
-    const opened = await openProductPage(page, urls, 'mobile');
+    const opened = await openProductPage(page, urls, 'mobile', device);
     resolvedProductUrl = opened.productUrl;
     productMaxPrice = opened.productMaxPrice;
-    debugArtifacts.productUrlsTried = urls;
+    debugArtifacts.productUrlsTried = opened.productUrlsTried || urls.map((url) => ({ url, valid: url === opened.productUrl }));
     debugArtifacts.resolvedProductUrl = resolvedProductUrl;
 
     await pickMobileVariant(page, modelName, quiz.storage);

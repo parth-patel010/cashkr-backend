@@ -175,7 +175,9 @@ export async function upsertPricingQuizRecord({
     if (!current || ['failed', 'pending'].includes(current.agentStatus)) {
       update.agentStatus = 'pending';
       update.error = null;
+      update.note = null;
       update.completedAt = null;
+      update.runAt = null;
     }
   }
 

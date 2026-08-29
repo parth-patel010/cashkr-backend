@@ -97,6 +97,7 @@ import {
   getPricingAgentRecords,
   syncPricingAgent,
   runAllPricingAgent,
+  runOnePricingAgent,
   exportPricingAgent,
   getPricingAgentSettings,
   savePricingAgentSettings,
@@ -271,6 +272,7 @@ router.get('/pricing-agent/stats', getPricingAgentStats);
 router.get('/pricing-agent/records', getPricingAgentRecords);
 router.post('/pricing-agent/sync', syncPricingAgent);
 router.post('/pricing-agent/run-all', runAllPricingAgent);
+router.post('/pricing-agent/run/:recordId', runOnePricingAgent);
 router.get('/pricing-agent/settings', getPricingAgentSettings);
 router.put('/pricing-agent/settings', savePricingAgentSettings);
 router.get('/pricing-agent/export', exportPricingAgent);
