@@ -83,7 +83,10 @@ export function serializePricingRecord(doc) {
     cashifyPrice: r.cashifyPrice,
     ourOffer: r.ourOffer,
     difference: r.difference,
-    agentStatus: r.agentStatus,
+    agentStatus: r.agentStatus === 'skipped' ? 'overridden' : r.agentStatus,
+    displayStatus: ['skipped', 'overridden'].includes(r.agentStatus) ? 'overridden' : r.agentStatus,
+    overridePrice: r.ourOffer,
+    overriddenFromRecordId: r.overriddenFromRecordId || '',
     cashifyProductUrl: r.cashifyProductUrl,
     error: r.error,
     note: r.note,
@@ -150,12 +153,13 @@ export async function upsertPricingQuizRecord({
   };
 
   if (existingCompleted) {
-    update.agentStatus = 'skipped';
+    update.agentStatus = 'overridden';
     update.cashifyPrice = existingCompleted.cashifyPrice;
     update.ourOffer = existingCompleted.ourOffer;
     update.difference = existingCompleted.difference;
     update.cashifyProductUrl = existingCompleted.cashifyProductUrl || '';
-    update.note = 'Already completed for this device + quiz.';
+    update.overriddenFromRecordId = String(existingCompleted._id);
+    update.note = 'Quiz overridden — same quiz always returns this locked price.';
     update.completedAt = existingCompleted.completedAt || new Date();
   } else {
     const current = await PricingQuizRecord.findOne({ slug, quizHash }).lean();
@@ -186,7 +190,7 @@ export async function findCachedValuationByHash(slug, quizHash) {
   return PricingQuizRecord.findOne({
     slug,
     quizHash,
-    agentStatus: { $in: ['completed', 'partial', 'skipped'] },
+    agentStatus: { $in: ['completed', 'partial', 'skipped', 'overridden'] },
     ourOffer: { $ne: null },
   }).lean();
 }
@@ -211,7 +215,7 @@ export async function requestLaptopValuation({
     return {
       cached: true,
       recordId: String(cached._id),
-      agentStatus: cached.agentStatus,
+      agentStatus: cached.agentStatus === 'skipped' ? 'overridden' : cached.agentStatus,
       ourOffer: cached.ourOffer,
       cashifyPrice: cached.cashifyPrice,
       internalPrice: cached.internalPrice,
@@ -236,11 +240,11 @@ export async function requestLaptopValuation({
   }
 
   const doc = record.toObject ? record.toObject() : record;
-  if (['completed', 'partial', 'skipped'].includes(doc.agentStatus) && doc.ourOffer != null) {
+  if (['completed', 'partial', 'skipped', 'overridden'].includes(doc.agentStatus) && doc.ourOffer != null) {
     return {
       cached: true,
       recordId: String(doc._id),
-      agentStatus: doc.agentStatus,
+      agentStatus: doc.agentStatus === 'skipped' ? 'overridden' : doc.agentStatus,
       ourOffer: doc.ourOffer,
       cashifyPrice: doc.cashifyPrice,
       internalPrice: doc.internalPrice,
@@ -251,7 +255,7 @@ export async function requestLaptopValuation({
   return {
     cached: false,
     recordId: String(doc._id),
-    agentStatus: doc.agentStatus,
+    agentStatus: doc.agentStatus === 'skipped' ? 'overridden' : doc.agentStatus,
     quizHash: doc.quizHash,
   };
 }

@@ -6,11 +6,15 @@ import {
 import { getAgentQueueStats, getQueuePosition } from '../services/cashify/batchWorker.js';
 
 function isTerminalStatus(status) {
-  return ['completed', 'partial', 'skipped', 'failed'].includes(status);
+  return ['completed', 'partial', 'skipped', 'overridden', 'failed'].includes(status);
 }
 
 function isSuccessStatus(status) {
-  return ['completed', 'partial', 'skipped'].includes(status);
+  return ['completed', 'partial', 'skipped', 'overridden'].includes(status);
+}
+
+function displayStatus(status) {
+  return status === 'skipped' ? 'overridden' : status;
 }
 
 export async function submitLaptopValuation(req, res, next) {
@@ -50,6 +54,7 @@ export async function submitLaptopValuation(req, res, next) {
 
     return res.json({
       ...result,
+      agentStatus: displayStatus(result.agentStatus),
       queuePosition,
       agentBusy: queue.agentBusy,
       pendingCount: queue.pending,
@@ -83,8 +88,8 @@ export async function getLaptopValuationStatus(req, res, next) {
 
     return res.json({
       recordId: String(record._id),
-      agentStatus: record.agentStatus,
-      cached: record.agentStatus === 'skipped' && Boolean(record.ourOffer),
+      agentStatus: displayStatus(record.agentStatus),
+      cached: ['skipped', 'overridden'].includes(record.agentStatus) && Boolean(record.ourOffer),
       done,
       success,
       ourOffer: record.ourOffer,

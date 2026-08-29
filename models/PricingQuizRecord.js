@@ -11,7 +11,7 @@ const pricingQuizRecordSchema = new mongoose.Schema({
   quizHash: { type: String, required: true, index: true },
   sourceType: {
     type: String,
-    enum: ['user_quiz', 'order', 'backfill'],
+    enum: ['user_quiz', 'user_valuation', 'order', 'backfill'],
     default: 'user_quiz',
   },
   sourceId: { type: String, default: '' },
@@ -21,10 +21,12 @@ const pricingQuizRecordSchema = new mongoose.Schema({
   difference: { type: Number, default: null },
   agentStatus: {
     type: String,
-    enum: ['pending', 'running', 'completed', 'partial', 'failed', 'skipped'],
+    enum: ['pending', 'running', 'completed', 'partial', 'failed', 'skipped', 'overridden'],
     default: 'pending',
     index: true,
   },
+  /** When status is overridden, points to the canonical completed record for this quiz hash */
+  overriddenFromRecordId: { type: String, default: '' },
   cashifyProductUrl: { type: String, default: '' },
   error: { type: String, default: null },
   note: { type: String, default: null },

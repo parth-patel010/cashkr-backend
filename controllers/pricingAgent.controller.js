@@ -15,11 +15,12 @@ import {
 export const getPricingAgentStats = async (req, res, next) => {
   try {
     const baseFilter = pricingAgentEligibleFilter();
-    const statuses = ['pending', 'running', 'completed', 'partial', 'failed', 'skipped'];
+    const statuses = ['pending', 'running', 'completed', 'partial', 'failed', 'skipped', 'overridden'];
     const counts = await Promise.all(
       statuses.map((s) => PricingQuizRecord.countDocuments({ ...baseFilter, agentStatus: s })),
     );
     const stats = Object.fromEntries(statuses.map((s, i) => [s, counts[i]]));
+    stats.overridden = (stats.overridden || 0) + (stats.skipped || 0);
     stats.total = counts.reduce((a, b) => a + b, 0);
     res.json({ stats });
   } catch (error) {

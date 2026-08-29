@@ -51,12 +51,13 @@ async function processOneRecord(record) {
   const cached = await findCompletedByHash(record.slug, record.quizHash);
   if (cached && String(cached._id) !== String(record._id)) {
     await PricingQuizRecord.findByIdAndUpdate(record._id, {
-      agentStatus: 'skipped',
+      agentStatus: 'overridden',
       cashifyPrice: cached.cashifyPrice,
       ourOffer: cached.ourOffer,
       difference: cached.difference,
       cashifyProductUrl: cached.cashifyProductUrl || '',
-      note: 'Duplicate quiz — using existing completed result.',
+      overriddenFromRecordId: String(cached._id),
+      note: 'Quiz overridden — same quiz always returns this locked price.',
       completedAt: new Date(),
       durationMs: Date.now() - started,
     });
@@ -230,12 +231,13 @@ export async function enqueueAllPending() {
     const cached = await findCompletedByHash(record.slug, record.quizHash);
     if (cached && String(cached._id) !== String(record._id)) {
       await PricingQuizRecord.findByIdAndUpdate(record._id, {
-        agentStatus: 'skipped',
+        agentStatus: 'overridden',
         cashifyPrice: cached.cashifyPrice,
         ourOffer: cached.ourOffer,
         difference: cached.difference,
         cashifyProductUrl: cached.cashifyProductUrl || '',
-        note: 'Already completed for this device + quiz.',
+        overriddenFromRecordId: String(cached._id),
+        note: 'Quiz overridden — same quiz always returns this locked price.',
         completedAt: new Date(),
       });
       skipped += 1;
@@ -256,6 +258,7 @@ export async function enqueueAllPending() {
 
   return {
     pending: alreadyPending,
+    overridden: skipped,
     skipped,
     enqueued: pending,
     alreadyCompleted,
