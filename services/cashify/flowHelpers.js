@@ -209,6 +209,23 @@ export async function clickContinue(page) {
   });
   if (!ok) return false;
   await page.waitForTimeout(900);
+  try {
+    await page.waitForFunction(
+      ({ prevUrl, prevId }) => {
+        const href = window.location.href;
+        if (href !== prevUrl) return true;
+        const params = new URL(href).searchParams;
+        const nowId = params.get('pageId');
+        if (nowId && nowId !== prevId) return true;
+        const body = document.body?.innerText || '';
+        return /selling price|recommended price|device evaluation/i.test(body) && /₹\s*[0-9]/.test(body);
+      },
+      { prevUrl: before, prevId: beforeId },
+      { timeout: 4000 },
+    ).catch(() => {});
+  } catch {
+    // ignore
+  }
   return pageIdFromUrl(page.url()) !== beforeId || page.url() !== before;
 }
 
@@ -635,7 +652,11 @@ export async function runQuoteLoop(page, {
 
     if (kind === lastKind) {
       repeatKind += 1;
-      if (repeatKind >= 2 && ['age', 'unknown', 'accessories'].includes(kind)) {
+      const repeatBreakKinds = [
+        'age', 'unknown', 'accessories', 'calls', 'touchscreen', 'screenOriginal',
+        'warranty', 'generalScreen',
+      ];
+      if (repeatKind >= 2 && repeatBreakKinds.includes(kind)) {
         debugArtifacts.steps.push({
           step,
           kind: `${kind}-repeat-break`,

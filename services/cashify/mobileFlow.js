@@ -265,9 +265,9 @@ async function clickLabelNearText(page, questionSnippet, labels) {
   return false;
 }
 
-async function answerGeneralScreen(page, quiz) {
+async function answerDeviceConditionQuestions(page, quiz) {
   const text = await page.locator('body').innerText().catch(() => '');
-  const hasCalls = /make and receive calls/i.test(text);
+  const hasCalls = /make and receive calls|able to make calls/i.test(text);
   const hasTouch = /touch screen/i.test(text);
   const hasOriginal = /screen original|original screen/i.test(text);
   const hasWarranty = /under manufacturer warranty|under warranty/i.test(text);
@@ -277,7 +277,10 @@ async function answerGeneralScreen(page, quiz) {
   // Prefer question-scoped clicks — multiple Yes/No pairs share the same page.
   if (hasCalls) {
     const ok = await clickYesNoNearText(page, 'make and receive calls', quiz.ableToMakeCalls !== false);
-    if (!ok) await clickYesNoByIndex(page, 0, quiz.ableToMakeCalls !== false);
+    if (!ok) {
+      const ok2 = await clickYesNoNearText(page, 'able to make calls', quiz.ableToMakeCalls !== false);
+      if (!ok2) await clickYesNoByIndex(page, 0, quiz.ableToMakeCalls !== false);
+    }
   }
   if (hasTouch) {
     const ok = await clickYesNoNearText(page, 'touch screen', quiz.isTouchScreenWorking !== false);
@@ -285,7 +288,10 @@ async function answerGeneralScreen(page, quiz) {
   }
   if (hasOriginal) {
     const ok = await clickYesNoNearText(page, 'screen original', quiz.isScreenOriginal !== false);
-    if (!ok) await clickYesNoByIndex(page, 2, quiz.isScreenOriginal !== false);
+    if (!ok) {
+      const ok2 = await clickYesNoNearText(page, 'original screen', quiz.isScreenOriginal !== false);
+      if (!ok2) await clickYesNoByIndex(page, 2, quiz.isScreenOriginal !== false);
+    }
   }
   if (hasWarranty) {
     const ok = await clickYesNoNearText(page, 'manufacturer warranty', !!quiz.underWarranty);
@@ -296,9 +302,7 @@ async function answerGeneralScreen(page, quiz) {
     const hasBill = Array.isArray(accessories)
       ? accessories.some((a) => /bill/i.test(String(a)))
       : /bill/i.test(String(accessories));
-    // Always answer bill — Cashify requires it even when out of warranty.
     const wantBill = !!quiz.underWarranty && hasBill;
-    // Avoid matching warranty help text that also mentions "GST valid bill".
     let ok = await clickYesNoNearText(page, 'Do you have GST valid bill', wantBill);
     if (!ok) ok = await clickYesNoNearText(page, 'bill with the same IMEI', wantBill);
     if (!ok) await clickYesNoByIndex(page, 4, wantBill);
@@ -311,6 +315,10 @@ async function answerGeneralScreen(page, quiz) {
 
   await page.waitForTimeout(400);
   await clickContinue(page);
+}
+
+async function answerGeneralScreen(page, quiz) {
+  await answerDeviceConditionQuestions(page, quiz);
 }
 
 async function answerAge(page, quiz) {
@@ -337,19 +345,43 @@ async function answerAge(page, quiz) {
 }
 
 async function questionHead(page) {
-  const text = await page.locator('body').innerText().catch(() => '');
-  const moreIdx = text.indexOf('\nMore\n');
-  if (moreIdx < 0) return text.slice(0, 500);
-  let afterMore = text.slice(moreIdx + 6);
-  afterMore = afterMore.replace(/Please answer the .*?\n+/gi, '');
-  const stops = ['\nContinue\n', '\nDevice Evaluation\n', '\nFollow us on\n'];
-  let end = afterMore.length;
-  for (const stop of stops) {
-    const idx = afterMore.indexOf(stop);
-    if (idx >= 0 && idx < end) end = idx;
-  }
-  const block = afterMore.slice(0, end);
-  const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+  const scoped = await page.evaluate(() => {
+    const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const visible = (n) => n && (n.offsetParent || n.getClientRects().length);
+    const continueBtn = [...document.querySelectorAll('button')].find((b) =>
+      /^continue$/i.test(normalize(b.innerText)),
+    );
+
+    if (continueBtn) {
+      let container = continueBtn.parentElement;
+      for (let depth = 0; depth < 14 && container; depth += 1) {
+        const text = normalize(container.innerText || '');
+        if (
+          text.length >= 20
+          && text.length <= 2500
+          && (/make and receive calls|touch screen|original screen|select the|tell us more|functional or physical|do you have the following|choose a variant|age of your|under warranty|screen\/body defects/i.test(text))
+        ) {
+          return text.slice(0, 900);
+        }
+        container = container.parentElement;
+      }
+    }
+
+    const body = document.body?.innerText || '';
+    const moreIdx = body.indexOf('\nMore\n');
+    if (moreIdx < 0) return body.slice(0, 500);
+    let afterMore = body.slice(moreIdx + 6);
+    afterMore = afterMore.replace(/Please answer the .*?\n+/gi, '');
+    const stops = ['\nContinue\n', '\nDevice Evaluation\n', '\nFollow us on\n'];
+    let end = afterMore.length;
+    for (const stop of stops) {
+      const idx = afterMore.indexOf(stop);
+      if (idx >= 0 && idx < end) end = idx;
+    }
+    return afterMore.slice(0, end).slice(0, 900);
+  }).catch(() => '');
+
+  const lines = String(scoped).split('\n').map((l) => l.trim()).filter(Boolean);
   const questionLine = lines.find((l) => (
     /\?$/.test(l)
     || /^(how old|what is the age|age of your|select the|tell us more|do you have the following|make and receive|functional or physical|choose a variant)/i.test(l)
@@ -593,23 +625,12 @@ async function answerCurrentMobileQuestion(page, quiz, modelName) {
     return kind;
   }
   if (kind === 'warranty') {
-    await clickYesNo(page, !!quiz.underWarranty);
-    await clickContinue(page);
+    await answerDeviceConditionQuestions(page, quiz);
     return kind;
   }
-  if (kind === 'calls') {
-    await clickYesNo(page, quiz.ableToMakeCalls !== false);
-    await clickContinue(page);
-    return kind;
-  }
-  if (kind === 'touchscreen') {
-    await clickYesNo(page, quiz.isTouchScreenWorking !== false);
-    await clickContinue(page);
-    return kind;
-  }
-  if (kind === 'screenOriginal') {
-    await clickYesNo(page, quiz.isScreenOriginal !== false);
-    await clickContinue(page);
+  if (kind === 'calls' || kind === 'touchscreen' || kind === 'screenOriginal') {
+    // Cashify often groups calls / touch / original on one page — answer all visible Yes/No pairs.
+    await answerDeviceConditionQuestions(page, quiz);
     return kind;
   }
   if (kind === 'physical') {

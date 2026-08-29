@@ -160,6 +160,56 @@ export const MOBILE_TECHNICAL_LABELS = {
   silent_button: 'Silent Button not working',
 };
 
+/** True when the visible step is asking about call functionality (not summary/history). */
+export function looksLikeCallsQuestion(text) {
+  const raw = String(text || '');
+  const q = raw.toLowerCase();
+  if (looksLikeResultSummary(raw)) return false;
+  if (/selling price|recommended price|device evaluation/i.test(q)) return false;
+  if (!/make and receive calls|able to make calls|calls working|receive calls/.test(q)) return false;
+  const slice = q.slice(0, 700);
+  return (
+    /\?\s*$/m.test(raw)
+    || /yes[\s\n]+no/i.test(slice)
+    || /no[\s\n]+yes/i.test(slice)
+  );
+}
+
+export function looksLikeTouchscreenQuestion(text) {
+  const raw = String(text || '');
+  const q = raw.toLowerCase();
+  if (looksLikeResultSummary(raw)) return false;
+  if (!/touch screen|touchscreen/.test(q) || !/working|functionality/.test(q)) return false;
+  const slice = q.slice(0, 700);
+  return /\?\s*$/m.test(raw) || /yes[\s\n]+no/i.test(slice);
+}
+
+export function looksLikeScreenOriginalQuestion(text) {
+  const raw = String(text || '');
+  const q = raw.toLowerCase();
+  if (looksLikeResultSummary(raw)) return false;
+  if (!/original screen|screen original|screen replaced|duplicate screen/.test(q)) return false;
+  const slice = q.slice(0, 700);
+  return /\?\s*$/m.test(raw) || /yes[\s\n]+no/i.test(slice);
+}
+
+export function looksLikeGeneralScreenPage(text) {
+  const raw = String(text || '');
+  const q = raw.toLowerCase();
+  if (/tell us more about your device|please answer a few questions about your device/.test(q)) {
+    return true;
+  }
+  const yesNoPairs = (q.match(/\byes\b/g) || []).length;
+  let signals = 0;
+  if (/make and receive calls|able to make calls/.test(q)) signals += 1;
+  if (/touch screen|touchscreen/.test(q)) signals += 1;
+  if (/original screen|screen original|screen replaced/.test(q)) signals += 1;
+  if (/under manufacturer warranty|under warranty/.test(q)) signals += 1;
+  if (/gst valid bill|bill with the same imei/.test(q)) signals += 1;
+  if (/how many esims|dual esim|single esim/.test(q)) signals += 1;
+  return signals >= 2 && yesNoPairs >= 2;
+}
+
 export function classifyMobileQuestion(text) {
   const raw = String(text || '');
   const head = raw.toLowerCase().split('\n').slice(0, 12).join('\n');
@@ -181,13 +231,14 @@ export function classifyMobileQuestion(text) {
   if (/functional or physical problems|front camera not working|battery faulty/.test(head)) {
     return 'technical';
   }
-  if (/tell us more about your device\?|please answer a few questions about your device/.test(head)) {
+  if (looksLikeGeneralScreenPage(head) || looksLikeGeneralScreenPage(raw.slice(0, 1400))) {
     return 'generalScreen';
   }
-  if (/make and receive calls/.test(head) && /touch screen/.test(head)) return 'generalScreen';
-  if (/make and receive calls|able to make calls|calls working|receive calls/.test(head)) return 'calls';
-  if (/touch screen|touchscreen|touch working|touch functionality/.test(head)) return 'touchscreen';
-  if (/original screen|screen replaced|duplicate screen|copy screen/.test(head)) return 'screenOriginal';
+  if (looksLikeCallsQuestion(head) || looksLikeCallsQuestion(raw.slice(0, 900))) return 'calls';
+  if (looksLikeTouchscreenQuestion(head) || looksLikeTouchscreenQuestion(raw.slice(0, 900))) return 'touchscreen';
+  if (looksLikeScreenOriginalQuestion(head) || looksLikeScreenOriginalQuestion(raw.slice(0, 900))) {
+    return 'screenOriginal';
+  }
   if (/glass crack|back panel|camera glass|physical condition|body condition|external damage/.test(head)) {
     return 'physical';
   }
@@ -200,16 +251,5 @@ export function classifyMobileQuestion(text) {
   if (/esim|e-sim|sim support|physical sim/.test(head)) return 'esim';
   if (/switch on|turns on|power on|device switch/.test(head)) return 'power';
 
-  // Fallback on slightly wider slice (still avoid sidebar issue labels)
-  if (/make and receive calls|able to make calls/.test(q)) return 'calls';
-  if (looksLikeAgeQuestion(q.slice(0, 1400))) return 'age';
-  if (/under warranty|valid warranty/.test(q)) return 'warranty';
-  if (/touch screen|touchscreen/.test(q) && /working|functionality/.test(q)) return 'touchscreen';
-  if (/original screen|screen replaced/.test(q)) return 'screenOriginal';
-  if (/physical condition|external damage|glass crack|back panel damage|screen\/body defects/.test(q)) return 'physical';
-  if (/technical condition|functional condition|technical issue|functional issue|functional or physical problems/.test(q)) return 'technical';
-  if (/screen physical condition|screen cracked/.test(q)) return 'screenPhysicalDetail';
-  if (/accessories|do you have the following/.test(q)) return 'accessories';
-  if (/esim|e-sim/.test(q)) return 'esim';
   return 'unknown';
 }
