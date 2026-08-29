@@ -85,18 +85,55 @@ export const MOBILE_AGE = {
   'Above 11 Months': 'Above 11 Months',
 };
 
+/** DeviceKart quiz age → Cashify button labels (new + legacy layouts). */
+export const MOBILE_AGE_CASHIFY_LABELS = {
+  '0 - 3 Months': ['Below 3 months', '0 - 3 Months'],
+  '3 - 6 Months': ['3 months - 6 months', '3 - 6 Months'],
+  '6 - 11 Months': ['6 months - 11 months', '6 - 11 Months'],
+  'Above 11 Months': ['Above 11 months', 'Above 11 Months'],
+};
+
+export function ageLabelsForQuiz(deviceAge) {
+  const key = deviceAge || 'Above 11 Months';
+  return MOBILE_AGE_CASHIFY_LABELS[key]
+    || MOBILE_AGE_CASHIFY_LABELS['Above 11 Months'];
+}
+
+/** True when Cashify shows age option buttons (legacy or warranty flow). */
+export function hasAgeOptionLabels(text) {
+  const q = String(text || '').toLowerCase();
+  const labels = [
+    '0 - 3 month', '3 - 6 month', '6 - 11 month', 'above 11 month',
+    'below 3 month', '3 months - 6 month', '6 months - 11 month',
+  ];
+  return labels.filter((l) => q.includes(l)).length >= 2;
+}
+
 /** True only when the active Cashify step is asking device age (not summary/history text). */
 export function looksLikeAgeQuestion(text) {
   const q = String(text || '').toLowerCase();
+  if (/what is your mobile age|mobile age\?/.test(q)) return true;
   const hasQuestion = (
     /age of your (mobile|phone|device)/.test(q)
+    || /age of the (mobile|phone|device)/.test(q)
     || /how old is your (mobile|phone|device)/.test(q)
     || /how old is the (mobile|phone|device)/.test(q)
     || /what is the age of your (mobile|phone|device)/.test(q)
     || /when did you purchase (this|your) (mobile|phone|device)/.test(q)
+    || /device age|phone age|months old/.test(q)
   );
-  if (!hasQuestion) return false;
-  return /0 - 3 month|3 - 6 month|6 - 11 month|above 11 month/i.test(q);
+  if (hasQuestion && hasAgeOptionLabels(q)) return true;
+  if (hasAgeOptionLabels(q) && q.length < 1800 && !/device evaluation/i.test(q)) return true;
+  return false;
+}
+
+export function looksLikeEsimQuestion(text) {
+  const q = String(text || '').toLowerCase();
+  if (looksLikeResultSummary(String(text || ''))) return false;
+  return (
+    /physical sim \+ esim|single esim|dual esim|esim only|how many esim|e-sim support|sim support/i.test(q)
+    && (/physical sim|single esim|dual esim|continue/i.test(q))
+  );
 }
 
 export function looksLikeResultSummary(text) {
@@ -196,6 +233,11 @@ export function looksLikeScreenOriginalQuestion(text) {
 export function looksLikeGeneralScreenPage(text) {
   const raw = String(text || '');
   const q = raw.toLowerCase();
+  if (/what is your mobile age|mobile age\?/.test(q)) return false;
+  // Device Evaluation sidebar repeats earlier Yes/No answers — not an active question page.
+  if (/device evaluation/i.test(q) && /device details|able to make and receive calls|touch working/i.test(q)) {
+    return false;
+  }
   if (/tell us more about your device|please answer a few questions about your device/.test(q)) {
     return true;
   }
@@ -217,6 +259,7 @@ export function classifyMobileQuestion(text) {
 
   if (looksLikeResultSummary(raw)) return 'result';
   if (/choose a variant|select variant|pick a variant|select storage|choose storage/.test(head)) return 'variant';
+  if (/what is your mobile age|mobile age\?/i.test(raw.slice(0, 900))) return 'age';
   if (looksLikeAgeQuestion(head) || looksLikeAgeQuestion(raw.slice(0, 1200))) return 'age';
   if (/under warranty|valid warranty|warranty status|in warranty|device under warranty/.test(head)) return 'warranty';
   if (/tell us more about your device screen defects|screen physical condition|screen cracked\/ glass broken|1-2 scratches on screen|visible lines on screen|spots on screen/i.test(head)) {
@@ -248,6 +291,8 @@ export function classifyMobileQuestion(text) {
   if (/accessories|original box|original charger|valid bill|gst bill|bill available|do you have the following/.test(head)) {
     return 'accessories';
   }
+  if (looksLikeEsimQuestion(head) || looksLikeEsimQuestion(raw.slice(0, 1400))) return 'esim';
+  if (looksLikeAgeQuestion(head) || looksLikeAgeQuestion(raw.slice(0, 1400))) return 'age';
   if (/esim|e-sim|sim support|physical sim/.test(head)) return 'esim';
   if (/switch on|turns on|power on|device switch/.test(head)) return 'power';
 

@@ -16,12 +16,19 @@ import {
 import {
   classifyMobileQuestion,
   MOBILE_AGE,
+  MOBILE_AGE_CASHIFY_LABELS,
+  ageLabelsForQuiz,
   MOBILE_PHYSICAL_LABELS,
   MOBILE_TECHNICAL_LABELS,
   MOBILE_SCREEN_PHYSICAL_DEFAULT,
   MOBILE_SCREEN_PHYSICAL_DETAIL_LABELS,
   MOBILE_PANEL_CONDITION_LABELS,
   MOBILE_BENT_CONDITION_LABELS,
+  looksLikeAgeQuestion,
+  looksLikeGeneralScreenPage,
+  looksLikeResultSummary,
+  looksLikeEsimQuestion,
+  hasAgeOptionLabels,
 } from './selectors.js';
 
 async function cardText(page, modelName) {
@@ -322,22 +329,32 @@ async function answerGeneralScreen(page, quiz) {
 }
 
 async function answerAge(page, quiz) {
-  const label = MOBILE_AGE[quiz.deviceAge] || quiz.deviceAge || 'Above 11 Months';
-  let clicked = await clickFirstVisible(page, [label]);
+  const labels = ageLabelsForQuiz(quiz.deviceAge);
+  let clicked = await clickFirstVisible(page, labels);
   if (!clicked) {
-    clicked = await clickLabel(page, label);
+    for (const label of labels) {
+      clicked = await clickLabel(page, label);
+      if (clicked) break;
+    }
   }
   if (!clicked) {
-    await page.evaluate((want) => {
-      const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-      const nodes = [...document.querySelectorAll('div, span, button, label, p, li')];
-      const target = nodes.find(
-        (n) => normalize(n.innerText || n.textContent || '') === want
-          && (n.offsetParent || n.getClientRects().length),
-      );
-      target?.scrollIntoView({ block: 'center' });
-      target?.click();
-    }, label);
+    for (const want of labels) {
+      await page.evaluate((label) => {
+        const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+        const wantNorm = normalize(label).toLowerCase();
+        const nodes = [...document.querySelectorAll('div, span, button, label, p, li')];
+        const target = nodes.find((n) => {
+          const t = normalize(n.innerText || n.textContent || '');
+          return (t.toLowerCase() === wantNorm || t.toLowerCase().startsWith(wantNorm))
+            && (n.offsetParent || n.getClientRects().length);
+        });
+        target?.scrollIntoView({ block: 'center' });
+        target?.click();
+      }, want);
+      await page.waitForTimeout(300);
+      clicked = true;
+      break;
+    }
   }
   await page.waitForTimeout(700);
   await clickContinue(page);
@@ -359,7 +376,7 @@ async function questionHead(page) {
         if (
           text.length >= 20
           && text.length <= 2500
-          && (/make and receive calls|touch screen|original screen|select the|tell us more|functional or physical|do you have the following|choose a variant|age of your|under warranty|screen\/body defects/i.test(text))
+          && (/make and receive calls|touch screen|original screen|select the|tell us more|functional or physical|do you have the following|choose a variant|age of your|age of the|what is your mobile age|how old|under warranty|screen\/body defects|0 - 3 month|below 3 month|6 - 11 month|6 months - 11 month|above 11 month|physical sim|dual esim|single esim|esim/i.test(text))
         ) {
           return text.slice(0, 900);
         }
@@ -601,12 +618,36 @@ async function answerESIM(page, quiz) {
   await clickContinue(page);
 }
 
+async function answerUnknownMobileStep(page, quiz, bodyText) {
+  const sample = String(bodyText || '').slice(0, 2800);
+  if (looksLikeResultSummary(sample)) return 'result';
+  if (/what is your mobile age|mobile age\?/i.test(sample) || looksLikeAgeQuestion(sample) || hasAgeOptionLabels(sample)) {
+    await answerAge(page, quiz);
+    return 'age';
+  }
+  if (looksLikeEsimQuestion(sample)) {
+    await answerESIM(page, quiz);
+    return 'esim';
+  }
+  if (looksLikeGeneralScreenPage(sample) || /make and receive calls|touch screen working|original screen/i.test(sample)) {
+    await answerDeviceConditionQuestions(page, quiz);
+    return 'generalScreen';
+  }
+  if (/do you have the following|bill available|original box with same imei|original charger of device/i.test(sample)) {
+    await answerAccessories(page, quiz);
+    return 'accessories';
+  }
+  await clickContinue(page);
+  return 'unknown';
+}
+
 async function answerCurrentMobileQuestion(page, quiz, modelName) {
   const head = await questionHead(page);
   const bodyText = await page.locator('body').innerText().catch(() => '');
+  const bodySample = bodyText.slice(0, 2800);
   const kind = classifyMobileQuestion(head) !== 'unknown'
     ? classifyMobileQuestion(head)
-    : classifyMobileQuestion(bodyText.slice(0, 900));
+    : classifyMobileQuestion(bodySample);
 
   if (kind === 'generalScreen') {
     await answerGeneralScreen(page, quiz);
@@ -666,6 +707,10 @@ async function answerCurrentMobileQuestion(page, quiz, modelName) {
     await clickYesNo(page, true);
     await clickContinue(page);
     return kind;
+  }
+
+  if (kind === 'unknown') {
+    return answerUnknownMobileStep(page, quiz, bodySample);
   }
 
   await clickContinue(page);
