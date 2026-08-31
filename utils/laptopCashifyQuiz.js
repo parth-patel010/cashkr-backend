@@ -10,7 +10,7 @@ export const CASHIFY_BODY_LABELS = {
 
 export const CASHIFY_SCREEN_LABELS = {
   screenScratch: { none: 'No scratches on screen', minor12: '1-2 scratches on screen', minorMore2: 'More than 2 scratches on screen', cracked: 'Screen Cracked or Broken' },
-  screenDiscolouration: { none: 'No Discolouration ', minor: 'Minor Discolouration', major: 'Major Discolouration' },
+  screenDiscolouration: { none: 'No Discolouration', minor: 'Minor Discolouration', major: 'Major Discolouration' },
   screenSpots: { none: 'No spots on screen', minor12: '1-2 minor spots on screen', heavy: 'Large/ heavy visible spots on screen' },
   screenLines: { none: 'No Lines', visible: 'Visible lines on Screen', flickering: 'Display Flickering', blackDots: 'Black Dots on Screen' },
   softwareIssue: { no: 'No software issue', yes: 'Laptop have Software issue' },
@@ -58,10 +58,12 @@ export function bodyLabel(field, key) {
 
 export function screenLabel(field, key) {
   const k = key || 'none';
+  const primary = CASHIFY_SCREEN_LABELS[field]?.[k] || CASHIFY_SCREEN_LABELS[field]?.none;
+  // Cashify UI sometimes includes a trailing space on "No Discolouration".
   if (field === 'screenDiscolouration' && k === 'none') {
-    return CASHIFY_SCREEN_LABELS.screenDiscolouration.none;
+    return [primary, 'No Discolouration '].filter(Boolean);
   }
-  return CASHIFY_SCREEN_LABELS[field]?.[k] || CASHIFY_SCREEN_LABELS[field]?.none;
+  return primary;
 }
 
 export function deriveScreenOverall(screen) {

@@ -124,45 +124,49 @@ export function extractPriceFromCalculatorUrl(url) {
 }
 
 export async function clickLabel(page, label) {
-  const exact = page.getByText(label, { exact: true });
-  if (await exact.count()) {
-    try {
-      await exact.first().click({ timeout: 2500, force: true });
-      return true;
-    } catch {
-      // fall through
+  const labels = Array.isArray(label) ? label.filter(Boolean) : [label].filter(Boolean);
+  for (const text of labels) {
+    const exact = page.getByText(text, { exact: true });
+    if (await exact.count()) {
+      try {
+        await exact.first().click({ timeout: 2500, force: true });
+        return true;
+      } catch {
+        // fall through
+      }
     }
-  }
-  const fuzzy = page.getByText(label, { exact: false });
-  if (await fuzzy.count()) {
-    try {
-      await fuzzy.first().click({ timeout: 2500, force: true });
-      return true;
-    } catch {
-      // fall through
+    const fuzzy = page.getByText(text, { exact: false });
+    if (await fuzzy.count()) {
+      try {
+        await fuzzy.first().click({ timeout: 2500, force: true });
+        return true;
+      } catch {
+        // fall through
+      }
     }
+    const clicked = await page.evaluate((wantText) => {
+      const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const want = normalize(wantText);
+      const nodes = [...document.querySelectorAll('button, a, div, span, p, label, li')];
+      const scored = nodes
+        .map((n) => {
+          const t = normalize(n.innerText || n.textContent || '');
+          let score = 0;
+          if (t === want) score = 1000 - t.length;
+          else if (t.startsWith(want)) score = 500 - t.length;
+          else if (t.includes(want) && t.length < want.length + 24) score = 200 - t.length;
+          return { n, score };
+        })
+        .filter((x) => x.score > 0)
+        .sort((a, b) => b.score - a.score);
+      if (!scored.length) return false;
+      scored[0].n.scrollIntoView({ block: 'center', inline: 'center' });
+      scored[0].n.click();
+      return true;
+    }, text);
+    if (clicked) return true;
   }
-  return page.evaluate((text) => {
-    const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const want = normalize(text);
-    const nodes = [...document.querySelectorAll('button, a, div, span, p, label, li')];
-    const scored = nodes
-      .map((n) => {
-        const t = normalize(n.innerText || n.textContent || '');
-        let score = 0;
-        if (t === want) score = 1000 - t.length;
-        else if (t.startsWith(want)) score = 500 - t.length;
-        else if (t.includes(want) && t.length < want.length + 24) score = 200 - t.length;
-        return { n, score };
-      })
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score);
-    const target = scored[0]?.n;
-    if (!target) return false;
-    target.scrollIntoView({ block: 'center', inline: 'center' });
-    target.click();
-    return true;
-  }, label);
+  return false;
 }
 
 export async function clickYesNo(page, yes) {
@@ -350,25 +354,46 @@ export async function startCalculator(page) {
 
   if (!opened) {
     const calcHref = await page.evaluate(() => {
-      const link = [...document.querySelectorAll('a')].find((el) => {
-        const href = el.getAttribute('href') || '';
-        return /calculator|pageId=/.test(href);
-      });
-      return link?.href || null;
+      const links = [...document.querySelectorAll('a[href*="calculator"], a[href*="pageId="]')];
+      for (const link of links) {
+        const href = link.href || link.getAttribute('href') || '';
+        if (/calculator|pageId=/.test(href)) return href.startsWith('http') ? href : `https://www.cashify.in${href}`;
+      }
+      const html = document.documentElement.innerHTML;
+      const match = html.match(/\/sell\/calculator\/page\?[^"'\\]+/i);
+      if (match) {
+        return `https://www.cashify.in${match[0].replace(/&amp;/g, '&')}`;
+      }
+      return null;
     });
     if (calcHref) {
       await page.goto(calcHref, { waitUntil: 'domcontentloaded' });
-      opened = true;
+      opened = /calculator|pageId=/.test(page.url());
+    }
+  }
+
+  if (!opened) {
+    const navigated = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll('a, button, div, span, p')];
+      const target = nodes.find((n) => /get exact value/i.test(String(n.innerText || n.textContent || '').trim()));
+      if (!target) return false;
+      target.scrollIntoView({ block: 'center', inline: 'center' });
+      target.click();
+      return true;
+    });
+    if (navigated) {
+      await page.waitForTimeout(2500);
+      opened = /calculator|pageId=/.test(page.url());
     }
   }
 
   try {
-    await page.waitForURL(/sell\/calculator|pageId=/, { timeout: 20000 });
+    await page.waitForURL(/sell\/calculator|pageId=/, { timeout: 30000 });
   } catch {
     // fall through to validation below
   }
 
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(1500);
 
   if (!/calculator|pageId=/.test(page.url())) {
     const hasExact = /get exact value/i.test(bodyText);
@@ -665,7 +690,7 @@ export async function runQuoteLoop(page, {
       repeatKind += 1;
       const repeatBreakKinds = [
         'age', 'unknown', 'accessories', 'calls', 'touchscreen', 'screenOriginal',
-        'warranty', 'generalScreen',
+        'warranty', 'generalScreen', 'screenPhysicalDetail', 'bodyPhysicalDetail',
       ];
       if (repeatKind >= 2 && repeatBreakKinds.includes(kind)) {
         debugArtifacts.steps.push({

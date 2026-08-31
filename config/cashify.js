@@ -124,6 +124,44 @@ function addSpellingVariants(slug, out) {
   if (slug.includes('redmibook')) {
     out.add(slug.replace(/redmibook/g, 'redmi-book'));
   }
+  // Foldable numbering: z-fold-6 ↔ z-fold6
+  if (/z-fold-?\d/i.test(slug) || /z-flip-?\d/i.test(slug)) {
+    out.add(slug.replace(/z-fold-(\d)/gi, 'z-fold$1').replace(/z-flip-(\d)/gi, 'z-flip$1'));
+    out.add(slug.replace(/z-fold(\d)/gi, 'z-fold-$1').replace(/z-flip(\d)/gi, 'z-flip-$1'));
+  }
+}
+
+/** Cashify MacBooks use year slugs (macbook-air-2022), not chip suffixes (-m1/-m2). */
+function macbookYearSlugVariants(slug, modelName = '') {
+  const text = `${slug || ''} ${modelName || ''}`.toLowerCase();
+  if (!/macbook/.test(text)) return [];
+
+  const line = /macbook\s*pro|macbook-pro/.test(text)
+    ? 'macbook-pro'
+    : /macbook\s*air|macbook-air/.test(text)
+      ? 'macbook-air'
+      : /macbook\s*neo|macbook-neo/.test(text)
+        ? 'macbook-neo-series'
+        : '';
+  if (!line) return [];
+
+  const years = [...`${slug || ''} ${modelName || ''}`.matchAll(/\b(20\d{2})\b/g)].map((m) => m[1]);
+  const out = new Set();
+  if (line === 'macbook-neo-series') {
+    out.add(line);
+    return [...out];
+  }
+  for (const year of years) {
+    out.add(`${line}-${year}`);
+  }
+  // Chip-only DeviceKart slugs (apple-macbook-air-m2) → try recent Air/Pro years.
+  if (!years.length && /macbook-(air|pro)-m\d/i.test(slug || '')) {
+    const series = /macbook-pro/i.test(slug) ? 'macbook-pro' : 'macbook-air';
+    for (const year of ['2024', '2023', '2022', '2021', '2020']) {
+      out.add(`${series}-${year}`);
+    }
+  }
+  return [...out];
 }
 
 /** Fix seed slugs like samsung-samsung-galaxy-* → samsung-galaxy-* */
@@ -206,6 +244,21 @@ export function slugVariants(slug, brand, modelName = '', options = {}) {
     variants.add(slug.replace(/^oneplus-one-plus-/i, 'oneplus-'));
   }
 
+  // Prefer keeping brand for Apple / Google mobiles (Cashify uses apple-iphone-*, google-pixel-*).
+  if (brandKey === 'apple' && slug.includes('iphone')) {
+    variants.add(dedupeRepeatedBrandPrefix(slug, brandKeys));
+  }
+  if (brandKey === 'google' && slug.includes('pixel')) {
+    variants.add(dedupeRepeatedBrandPrefix(slug, brandKeys));
+  }
+
+  // MacBook catalog is year-based on Cashify (macbook-air-2022), not chip-based (macbook-air-m2).
+  if ((brandKey === 'apple' || slug.includes('macbook')) && /macbook/i.test(slug + modelName)) {
+    for (const yearSlug of macbookYearSlugVariants(slug, modelName)) {
+      variants.add(yearSlug);
+    }
+  }
+
   const storageSlugs = new Set();
   const storageSlug = storageToCashifySlug(storage);
   if (storageSlug) storageSlugs.add(storageSlug);
@@ -228,6 +281,7 @@ export function slugVariants(slug, brand, modelName = '', options = {}) {
 
 function slugCandidateScore(slug, brand, originalSlug, modelName = '', preferredStorage = '') {
   const brandKeys = brandStripKeys(brand);
+  const brandKey = brandKeys[0] || '';
   const modelSlug = modelNameSlug(modelName, brand);
   const isOriginal = slug === originalSlug;
   const hasBrandPrefix = brandKeys.some((key) => slug.startsWith(`${key}-`));
@@ -242,6 +296,14 @@ function slugCandidateScore(slug, brand, originalSlug, modelName = '', preferred
     return -20;
   }
   if (storageSlug && slug.includes(`-${storageSlug}`)) return -5;
+  // Prefer Cashify oneplus-* over seed oneplus-one-plus-* / one-plus-*.
+  if (brandKey === 'oneplus' && /^oneplus-[a-z0-9]/.test(slug) && !/^oneplus-one-plus-/.test(slug)) return -6;
+  if (brandKey === 'oneplus' && (/^one-plus-/.test(slug) || /^oneplus-one-plus-/.test(slug))) return 48;
+  if (brandKey === 'oneplus' && /^\d+$/.test(slug)) return 90;
+  // Apple / Google mobiles keep brand prefix on Cashify.
+  if ((brandKey === 'apple' || brandKey === 'google') && hasBrandPrefix && !endsWithConnectivity) return -8;
+  // MacBook year pages (macbook-air-2022) beat chip-based DeviceKart slugs.
+  if (/^macbook-(air|pro)-\d{4}$/.test(slug)) return -10;
   // Cashify parent pages usually drop -5g (verified: s21-fe not s21-fe-5g).
   if (hasBrandPrefix && !endsWithConnectivity && modelHasConnectivity) return -12;
   if (dedupedOriginal && slug === dedupedOriginal && dedupedOriginal !== originalSlug) return 1;

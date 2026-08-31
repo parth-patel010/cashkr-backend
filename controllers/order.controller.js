@@ -107,8 +107,9 @@ export const createOrder = async (req, res, next) => {
         quizPayload: device,
         quizSummary: Array.isArray(device.answerSummary) ? device.answerSummary : [],
         sourceType: 'order',
-        sourceId: String(order._id),
+        sourceId: order.orderId,
         internalPrice: resolvedPriceBreakdown?.internalPrice ?? resolvedPriceBreakdown?.finalPrice ?? null,
+        capturedAt: order.createdAt,
       }).catch(() => {});
     }
 

@@ -105,6 +105,13 @@ export function serializePricingRecord(doc) {
   };
 }
 
+function buildUpsertFilter(sourceType, sourceId, slug, quizHash) {
+  if (sourceType === 'order' && sourceId) {
+    return { sourceType: 'order', sourceId: String(sourceId) };
+  }
+  return { slug, quizHash, sourceType: { $ne: 'order' } };
+}
+
 export async function upsertPricingQuizRecord({
   slug,
   category,
@@ -115,6 +122,7 @@ export async function upsertPricingQuizRecord({
   quizSummary = [],
   sourceType = 'user_quiz',
   sourceId = '',
+  capturedAt,
 }) {
   const allowed = ['mobile', 'laptop', 'mac'];
   if (!allowed.includes(category)) return null;
@@ -145,6 +153,7 @@ export async function upsertPricingQuizRecord({
     agentStatus: { $in: ['completed', 'partial'] },
   }).lean();
 
+  const captureTime = capturedAt ? new Date(capturedAt) : new Date();
   const update = {
     category,
     brand: brand || device.brand,
@@ -156,9 +165,11 @@ export async function upsertPricingQuizRecord({
     sourceId: String(sourceId || ''),
     basePrice,
     internalPrice,
-    capturedAt: new Date(),
     hasFilledQuiz: true,
   };
+  if (sourceType === 'user_quiz' || sourceType === 'user_valuation' || capturedAt) {
+    update.capturedAt = captureTime;
+  }
 
   if (existingCompleted) {
     update.agentStatus = 'overridden';
@@ -170,7 +181,8 @@ export async function upsertPricingQuizRecord({
     update.note = 'Quiz overridden — same quiz always returns this locked price.';
     update.completedAt = existingCompleted.completedAt || new Date();
   } else {
-    const current = await PricingQuizRecord.findOne({ slug, quizHash }).lean();
+    const matchFilter = buildUpsertFilter(sourceType, sourceId, slug, quizHash);
+    const current = await PricingQuizRecord.findOne(matchFilter).lean();
     // Re-queue failed jobs; leave running alone so the user keeps waiting on the same record.
     if (!current || ['failed', 'pending'].includes(current.agentStatus)) {
       update.agentStatus = 'pending';
@@ -181,9 +193,13 @@ export async function upsertPricingQuizRecord({
     }
   }
 
+  const matchFilter = buildUpsertFilter(sourceType, sourceId, slug, quizHash);
   const record = await PricingQuizRecord.findOneAndUpdate(
-    { slug, quizHash },
-    { $set: update, $setOnInsert: { slug, quizHash } },
+    matchFilter,
+    {
+      $set: update,
+      $setOnInsert: { slug, quizHash, capturedAt: captureTime },
+    },
     { upsert: true, new: true },
   );
 

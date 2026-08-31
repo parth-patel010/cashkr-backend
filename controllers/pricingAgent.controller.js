@@ -21,9 +21,30 @@ import {
 } from '../utils/offerMarkup.js';
 import { ensureAppSettings } from './appSettings.controller.js';
 
+function buildCapturedAtFilter(fromDate, toDate) {
+  if (!fromDate && !toDate) return {};
+  const capturedAt = {};
+  if (fromDate) capturedAt.$gte = new Date(fromDate);
+  if (toDate) {
+    const end = new Date(toDate);
+    end.setHours(23, 59, 59, 999);
+    capturedAt.$lte = end;
+  }
+  return { capturedAt };
+}
+
+function buildPricingAgentQueryFilter(query = {}) {
+  const filter = { ...pricingAgentEligibleFilter() };
+  const dateFilter = buildCapturedAtFilter(query.fromDate, query.toDate);
+  if (dateFilter.capturedAt) Object.assign(filter, dateFilter);
+  if (query.status) filter.agentStatus = query.status;
+  if (query.category) filter.category = query.category;
+  return filter;
+}
+
 export const getPricingAgentStats = async (req, res, next) => {
   try {
-    const baseFilter = pricingAgentEligibleFilter();
+    const baseFilter = buildPricingAgentQueryFilter(req.query);
     const statuses = ['pending', 'running', 'completed', 'partial', 'failed', 'skipped', 'overridden'];
     const counts = await Promise.all(
       statuses.map((s) => PricingQuizRecord.countDocuments({ ...baseFilter, agentStatus: s })),
@@ -31,7 +52,11 @@ export const getPricingAgentStats = async (req, res, next) => {
     const stats = Object.fromEntries(statuses.map((s, i) => [s, counts[i]]));
     stats.overridden = (stats.overridden || 0) + (stats.skipped || 0);
     stats.total = counts.reduce((a, b) => a + b, 0);
-    res.json({ stats });
+    res.json({
+      stats,
+      fromDate: req.query.fromDate || null,
+      toDate: req.query.toDate || null,
+    });
   } catch (error) {
     next(error);
   }
@@ -42,12 +67,10 @@ export const getPricingAgentRecords = async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const skip = (page - 1) * limit;
-    const filter = { ...pricingAgentEligibleFilter() };
-    if (req.query.status) filter.agentStatus = req.query.status;
-    if (req.query.category) filter.category = req.query.category;
+    const filter = buildPricingAgentQueryFilter(req.query);
 
     const [records, total] = await Promise.all([
-      PricingQuizRecord.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      PricingQuizRecord.find(filter).sort({ capturedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean(),
       PricingQuizRecord.countDocuments(filter),
     ]);
 
@@ -56,6 +79,8 @@ export const getPricingAgentRecords = async (req, res, next) => {
       total,
       page,
       pages: Math.ceil(total / limit) || 1,
+      fromDate: req.query.fromDate || null,
+      toDate: req.query.toDate || null,
     });
   } catch (error) {
     next(error);
@@ -161,8 +186,9 @@ export const exportPricingAgent = async (req, res, next) => {
   try {
     const format = String(req.query.format || 'xlsx').toLowerCase();
     const limit = Math.min(Number(req.query.limit) || 5000, 10000);
-    const records = await PricingQuizRecord.find(pricingAgentEligibleFilter())
-      .sort({ createdAt: -1 })
+    const filter = buildPricingAgentQueryFilter(req.query);
+    const records = await PricingQuizRecord.find(filter)
+      .sort({ capturedAt: -1, createdAt: -1 })
       .limit(limit)
       .lean();
 

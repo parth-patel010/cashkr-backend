@@ -43,9 +43,17 @@ const pricingQuizRecordSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-pricingQuizRecordSchema.index({ slug: 1, quizHash: 1 }, { unique: true });
-pricingQuizRecordSchema.index({ agentStatus: 1, createdAt: -1 });
+pricingQuizRecordSchema.index(
+  { slug: 1, quizHash: 1 },
+  { unique: true, partialFilterExpression: { sourceType: { $ne: 'order' } } },
+);
+pricingQuizRecordSchema.index(
+  { sourceType: 1, sourceId: 1 },
+  { unique: true, partialFilterExpression: { sourceType: 'order', sourceId: { $ne: '' } } },
+);
+pricingQuizRecordSchema.index({ agentStatus: 1, capturedAt: -1 });
 pricingQuizRecordSchema.index({ agentStatus: 1, basePrice: -1, createdAt: 1 });
+pricingQuizRecordSchema.index({ capturedAt: -1 });
 pricingQuizRecordSchema.index({ createdAt: -1 });
 
 const PricingQuizRecord = mongoose.model('PricingQuizRecord', pricingQuizRecordSchema);

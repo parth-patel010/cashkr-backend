@@ -531,7 +531,7 @@ export async function syncPricingRecordsFromSources() {
   const users = await User.find({
     'lastQuizDevice.slug': { $exists: true, $ne: '' },
     'lastQuizDevice.category': { $in: ['mobile', 'laptop', 'mac'] },
-  }).select('lastQuizDevice _id').lean();
+  }).select('lastQuizDevice _id updatedAt').lean();
 
   for (const user of users) {
     const d = user.lastQuizDevice;
@@ -553,6 +553,7 @@ export async function syncPricingRecordsFromSources() {
       quizSummary: summary,
       sourceType: 'backfill',
       sourceId: String(user._id),
+      capturedAt: d.loggedInAt || user.updatedAt,
     });
     if (record) imported += 1;
   }
@@ -560,7 +561,7 @@ export async function syncPricingRecordsFromSources() {
   const orders = await Order.find({
     'device.slug': { $exists: true, $ne: '' },
     'device.category': { $in: ['mobile', 'laptop', 'mac'] },
-  }).select('device orderId').lean();
+  }).select('device orderId createdAt').lean();
 
   for (const order of orders) {
     const quizPayload = order.device;
@@ -581,6 +582,7 @@ export async function syncPricingRecordsFromSources() {
       quizSummary: summary,
       sourceType: 'order',
       sourceId: order.orderId,
+      capturedAt: order.createdAt,
     });
     if (record) imported += 1;
   }
