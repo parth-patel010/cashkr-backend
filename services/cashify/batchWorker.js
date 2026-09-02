@@ -8,6 +8,7 @@ import { findCompletedByHash, serializePricingRecord, upsertPricingQuizRecord, c
 import { hasFilledQuizFromSource, hasMeaningfulQuizSummary, pricingAgentEligibleFilter } from '../../utils/quizFilled.js';
 import { buildQuizSummaryFromPayload } from '../../utils/buildQuizSummary.js';
 import { computeOurOfferFromSettings } from '../../utils/offerMarkup.js';
+import { setValuationRun } from '../../utils/valuationRunCache.js';
 
 const POLL_MS = 5000;
 /** Re-queue jobs stuck in `running` (crashed worker / hung Playwright). */
@@ -137,7 +138,12 @@ async function processOneRecord(record) {
 
   const finalizeRunning = async (patch) => {
     finished = true;
-    await PricingQuizRecord.findByIdAndUpdate(record._id, patch);
+    setValuationRun(record._id, patch);
+    try {
+      await PricingQuizRecord.findByIdAndUpdate(record._id, patch);
+    } catch (err) {
+      console.error(`[pricing-agent] Could not persist record ${record._id}:`, err.message);
+    }
   };
 
   try {
@@ -424,6 +430,11 @@ export async function processRecordById(recordId) {
     }
     if (!record) return existing;
   }
+
+  setValuationRun(recordId, {
+    agentStatus: 'running',
+    runAt: record.runAt || new Date(),
+  });
 
   await processOneRecord(record);
   return PricingQuizRecord.findById(recordId).lean();

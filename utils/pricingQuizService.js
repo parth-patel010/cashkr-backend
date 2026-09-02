@@ -4,6 +4,7 @@ import { calculateLaptopPrice } from './laptopPriceCalculator.js';
 import { calculateMobilePrice } from './mobilePriceCalculator.js';
 import { hashQuizPayload } from './quizHash.js';
 import { normalizeQuizForCategory } from './quizNormalize.js';
+import { setValuationRun } from './valuationRunCache.js';
 import { hasFilledQuizFromSource, hasMeaningfulQuizSummary } from './quizFilled.js';
 import { buildQuizSummaryFromPayload } from './buildQuizSummary.js';
 
@@ -258,6 +259,13 @@ export async function requestDeviceValuation({
   const quizHash = hashQuizPayload(normalized);
   const cached = await findCachedValuationByHash(slug, quizHash);
   if (cached) {
+    setValuationRun(cached._id, {
+      agentStatus: cached.agentStatus,
+      ourOffer: cached.ourOffer,
+      cashifyPrice: cached.cashifyPrice,
+      internalPrice: cached.internalPrice,
+      note: cached.note,
+    });
     return {
       cached: true,
       recordId: String(cached._id),
@@ -286,6 +294,16 @@ export async function requestDeviceValuation({
   }
 
   const doc = record.toObject ? record.toObject() : record;
+  setValuationRun(doc._id, {
+    agentStatus: doc.agentStatus,
+    ourOffer: doc.ourOffer,
+    cashifyPrice: doc.cashifyPrice,
+    internalPrice: doc.internalPrice,
+    quizHash: doc.quizHash,
+    error: doc.error,
+    note: doc.note,
+  });
+
   if (['completed', 'partial', 'skipped', 'overridden'].includes(doc.agentStatus) && doc.ourOffer != null) {
     return {
       cached: true,
