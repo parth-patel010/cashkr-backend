@@ -198,11 +198,17 @@ export async function upsertPricingQuizRecord({
   }
 
   const matchFilter = buildUpsertFilter(sourceType, sourceId, slug, quizHash);
+  // Mongo forbids the same path in both $set and $setOnInsert (capturedAt conflict).
+  const setOnInsert = { slug, quizHash };
+  if (update.capturedAt == null) {
+    setOnInsert.capturedAt = captureTime;
+  }
+
   const record = await PricingQuizRecord.findOneAndUpdate(
     matchFilter,
     {
       $set: update,
-      $setOnInsert: { slug, quizHash, capturedAt: captureTime },
+      $setOnInsert: setOnInsert,
     },
     { upsert: true, new: true },
   );

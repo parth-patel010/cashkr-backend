@@ -2,12 +2,18 @@ import mongoose from 'mongoose';
 import connectDB from '../config/db.js';
 
 export function isMongoRetryableError(err) {
+  const message = String(err?.message || '');
+  // Never retry permanent write/query conflicts (e.g. $set + $setOnInsert same path).
+  if (/would create a conflict|duplicate key|E11000|validation failed/i.test(message)) {
+    return false;
+  }
   return (
-    err?.name === 'MongoServerError'
-    || err?.name === 'MongoNetworkError'
+    err?.name === 'MongoNetworkError'
     || err?.name === 'MongoNotConnectedError'
-    || err?.name === 'MongooseError'
-    || /not connected|buffering timed out|connection closed|topology was destroyed/i.test(String(err?.message || ''))
+    || err?.codeName === 'NotPrimaryNoSecondaryOk'
+    || err?.codeName === 'HostUnreachable'
+    || err?.codeName === 'NetworkTimeout'
+    || /not connected|buffering timed out|connection closed|topology was destroyed|server selection timed out/i.test(message)
   );
 }
 
