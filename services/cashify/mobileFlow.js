@@ -26,6 +26,8 @@ import {
   MOBILE_BENT_CONDITION_LABELS,
   looksLikeAgeQuestion,
   looksLikeGeneralScreenPage,
+  looksLikeScreenSpotDetailPage,
+  looksLikeScreenScratchDetailPage,
   looksLikeResultSummary,
   looksLikeEsimQuestion,
   hasAgeOptionLabels,
@@ -376,7 +378,7 @@ async function questionHead(page) {
         if (
           text.length >= 20
           && text.length <= 2500
-          && (/make and receive calls|touch screen|original screen|select the|tell us more|functional or physical|do you have the following|choose a variant|age of your|age of the|what is your mobile age|how old|under warranty|screen\/body defects|0 - 3 month|below 3 month|6 - 11 month|6 months - 11 month|above 11 month|physical sim|dual esim|single esim|esim/i.test(text))
+          && (/make and receive calls|touch screen|original screen|select the|tell us more|functional or physical|do you have the following|choose a variant|age of your|age of the|what is your mobile age|how old|under warranty|screen\/body defects|spots on screen|visible line|discoloration|screen physical|screen cracked|outer screen|0 - 3 month|below 3 month|6 - 11 month|6 months - 11 month|above 11 month|physical sim|dual esim|single esim|esim/i.test(text))
         ) {
           return text.slice(0, 900);
         }
@@ -497,7 +499,7 @@ async function clickOptionNearSection(page, sectionSnippet, labels) {
   return clickFirstVisible(page, list);
 }
 
-async function answerMultiSectionScreenDetail(page, quiz = {}) {
+async function pickSpotLineDiscolorationSections(page, quiz = {}) {
   const physical = quiz.physicalIssues || [];
   const hasGlass = physical.includes('glass_crack');
   const hasSpot = physical.includes('screen_spot');
@@ -510,27 +512,80 @@ async function answerMultiSectionScreenDetail(page, quiz = {}) {
     else spotPick = 'Large/ heavy visible spots on screen';
   }
 
-  await clickOptionNearSection(page, 'Dead Pixels', [spotPick, '1-2 minor spots on screen', 'No spots on screen']);
-  await clickOptionNearSection(page, 'Visible Lines', ['No line(s) on Display', 'Visible line(s) on display']);
-  await clickOptionNearSection(
-    page,
-    'Discoloration',
-    [hasSpot ? 'Minor Discoloration' : 'No Discoloration', 'No Discoloration', 'Major Discoloration'],
-  );
+  const linePick = hasSpot ? 'Visible line(s) on display' : 'No line(s) on Display';
+  const discPick = hasSpot ? 'Minor Discoloration' : 'No Discoloration';
+
+  const spotSnippets = ['Dead Pixels', 'Spots on Screen', 'spots on screen', 'Dead Spot', 'Visible spot'];
+  let spotClicked = false;
+  for (const snippet of spotSnippets) {
+    // eslint-disable-next-line no-await-in-loop
+    spotClicked = await clickOptionNearSection(page, snippet, [
+      spotPick,
+      'Large/ heavy visible spots on screen',
+      '3 or more minor spots on screen',
+      '1-2 minor spots on screen',
+      'No spots on screen',
+    ]);
+    if (spotClicked) break;
+  }
+  if (!spotClicked) {
+    await clickFirstVisible(page, [spotPick, '1-2 minor spots on screen', 'No spots on screen']);
+  }
+
+  const lineSnippets = ['Visible Lines', 'Visible line', 'line(s) on Display', 'Lines on'];
+  let lineClicked = false;
+  for (const snippet of lineSnippets) {
+    // eslint-disable-next-line no-await-in-loop
+    lineClicked = await clickOptionNearSection(page, snippet, [
+      linePick,
+      'Visible line(s) on display',
+      'No line(s) on Display',
+    ]);
+    if (lineClicked) break;
+  }
+  if (!lineClicked) {
+    await clickFirstVisible(page, [linePick, 'No line(s) on Display', 'Visible line(s) on display']);
+  }
+
+  const discSnippets = ['Discoloration', 'discoloration'];
+  let discClicked = false;
+  for (const snippet of discSnippets) {
+    // eslint-disable-next-line no-await-in-loop
+    discClicked = await clickOptionNearSection(page, snippet, [
+      discPick,
+      'Minor Discoloration',
+      'Major Discoloration',
+      'No Discoloration',
+      'No Discolouration',
+      'No Discolouration ',
+    ]);
+    if (discClicked) break;
+  }
+  if (!discClicked) {
+    await clickFirstVisible(page, [discPick, 'No Discoloration', 'Minor Discoloration']);
+  }
 
   const body = await page.locator('body').innerText().catch(() => '');
   if (/outer screen condition/i.test(body)) {
-    const outerPick = hasGlass
+    const outerPick = hasGlass || hasSpot
       ? 'Outer screen damaged/line/ broken or Spot'
       : 'No issue with outer screen';
-    await clickOptionNearSection(page, 'Outer Screen', [outerPick, 'No issue with outer screen']);
+    await clickOptionNearSection(page, 'Outer Screen', [outerPick, 'No issue with outer screen'])
+      || await clickFirstVisible(page, [outerPick, 'No issue with outer screen']);
   }
+}
 
+async function answerSpotLineDiscolorationSections(page, quiz = {}) {
+  await pickSpotLineDiscolorationSections(page, quiz);
   await page.waitForTimeout(500);
   await clickContinue(page);
 }
 
-async function answerSingleScreenPhysicalCondition(page, quiz = {}) {
+async function answerMultiSectionScreenDetail(page, quiz = {}) {
+  await answerSpotLineDiscolorationSections(page, quiz);
+}
+
+async function pickSingleScreenScratch(page, quiz = {}) {
   const physical = quiz.physicalIssues || [];
   const hasGlass = physical.includes('glass_crack');
   const detail = quiz.screenPhysicalDetail;
@@ -550,57 +605,38 @@ async function answerSingleScreenPhysicalCondition(page, quiz = {}) {
   if (!clicked) {
     await clickLabel(page, '1-2 scratches on screen').catch(() => {});
   }
+}
+
+async function answerSingleScreenPhysicalCondition(page, quiz = {}) {
+  await pickSingleScreenScratch(page, quiz);
   await page.waitForTimeout(400);
   await clickContinue(page);
 }
 
 async function answerScreenPhysicalDetail(page, quiz = {}) {
-  const body = await page.locator('body').innerText().catch(() => '');
+  const head = await questionHead(page);
   const physical = quiz.physicalIssues || [];
   const hasGlass = physical.includes('glass_crack');
   const hasSpot = physical.includes('screen_spot');
 
-  if (/outer screen condition|dead pixels\/spots on screen/i.test(body)) {
-    await answerMultiSectionScreenDetail(page, quiz);
-    return;
+  const hasScratchUi = looksLikeScreenScratchDetailPage(head);
+  const hasSpotUi = looksLikeScreenSpotDetailPage(head);
+
+  if (hasScratchUi && hasGlass) {
+    await pickSingleScreenScratch(page, quiz);
   }
 
-  if (/screen physical condition|screen cracked\/ glass broken|more than 2 scratches on screen/i.test(body)) {
-    await answerSingleScreenPhysicalCondition(page, quiz);
-    return;
-  }
-
-  if (/tell us more about your device'?s? screen defects/i.test(body)) {
-    await answerSingleScreenPhysicalCondition(page, quiz);
-    return;
-  }
-
-  if (!hasGlass && !hasSpot) {
+  if (hasSpotUi || hasSpot) {
+    await pickSpotLineDiscolorationSections(page, quiz);
+  } else if (!hasGlass && !hasSpot) {
     await clickContinue(page);
     return;
+  } else if (hasGlass && !hasScratchUi) {
+    await pickSingleScreenScratch(page, quiz);
   }
 
-  if (!hasGlass && hasSpot) {
-    const spotLabels = [
-      'Large/ heavy visible spots on screen',
-      '3 or more minor spots on screen',
-      '1-2 minor spots on screen',
-      'No spots on screen',
-      'Visible line(s) on display',
-      'No line(s) on Display',
-      'No Discoloration',
-    ];
-    const clicked = await clickFirstVisible(page, spotLabels);
-    if (clicked) {
-      await page.waitForTimeout(400);
-      await clickContinue(page);
-      return;
-    }
-    await clickContinue(page);
-    return;
-  }
-
-  await answerSingleScreenPhysicalCondition(page, quiz);
+  await page.waitForTimeout(500);
+  await clickContinue(page);
 }
 
 async function clickFirstVisible(page, labels) {

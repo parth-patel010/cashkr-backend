@@ -230,6 +230,27 @@ export function looksLikeScreenOriginalQuestion(text) {
   return /\?\s*$/m.test(raw) || /yes[\s\n]+no/i.test(slice);
 }
 
+/** Cashify spot/line/discoloration detail — standard phones + foldables. */
+export function looksLikeScreenSpotDetailPage(text) {
+  const q = String(text || '').toLowerCase();
+  if (looksLikeResultSummary(String(text || ''))) return false;
+  if (/outer screen condition|dead pixels\/spots on screen/i.test(q)) return true;
+  const hasSpots = /spots on screen|dead pixel|visible spot|minor spots on screen/i.test(q);
+  const hasLines = /line\(s\) on display|visible line/i.test(q);
+  const hasDisc = /discoloration/i.test(q);
+  return (hasSpots && hasLines) || (hasSpots && hasDisc) || (hasLines && hasDisc);
+}
+
+/** Single-select scratch/crack screen detail (when glass_crack selected). */
+export function looksLikeScreenScratchDetailPage(text) {
+  const q = String(text || '').toLowerCase();
+  if (looksLikeScreenSpotDetailPage(text)) return false;
+  return (
+    /tell us more about your device'?s? screen defects|screen physical condition|screen cracked\/ glass broken/i.test(q)
+    && /1-2 scratches on screen|more than 2 scratches|screen cracked|chipped\/cracked outside/i.test(q)
+  );
+}
+
 export function looksLikeGeneralScreenPage(text) {
   const raw = String(text || '');
   const q = raw.toLowerCase();
@@ -262,7 +283,9 @@ export function classifyMobileQuestion(text) {
   if (/what is your mobile age|mobile age\?/i.test(raw.slice(0, 900))) return 'age';
   if (looksLikeAgeQuestion(head) || looksLikeAgeQuestion(raw.slice(0, 1200))) return 'age';
   if (/under warranty|valid warranty|warranty status|in warranty|device under warranty/.test(head)) return 'warranty';
-  if (/tell us more about your device screen defects|screen physical condition|screen cracked\/ glass broken|1-2 scratches on screen|visible lines on screen|spots on screen/i.test(head)) {
+  if (looksLikeScreenSpotDetailPage(raw) || looksLikeScreenSpotDetailPage(head)) return 'screenPhysicalDetail';
+  if (looksLikeScreenScratchDetailPage(raw) || looksLikeScreenScratchDetailPage(head)) return 'screenPhysicalDetail';
+  if (/tell us more about your device screen defects|screen physical condition|screen cracked\/ glass broken|1-2 scratches on screen/i.test(head)) {
     return 'screenPhysicalDetail';
   }
   if (/tell us more about your device's body defects|panel condition|device bent|side\/back panel|scratches on device body|dents on device body|1-2 minor dents/.test(head)) {

@@ -21,22 +21,33 @@ import {
 } from '../utils/offerMarkup.js';
 import { ensureAppSettings } from './appSettings.controller.js';
 
-function buildCapturedAtFilter(fromDate, toDate) {
+function buildActivityDateFilter(fromDate, toDate) {
   if (!fromDate && !toDate) return {};
-  const capturedAt = {};
-  if (fromDate) capturedAt.$gte = new Date(fromDate);
+  const range = {};
+  if (fromDate) {
+    const start = new Date(fromDate);
+    start.setHours(0, 0, 0, 0);
+    range.$gte = start;
+  }
   if (toDate) {
     const end = new Date(toDate);
     end.setHours(23, 59, 59, 999);
-    capturedAt.$lte = end;
+    range.$lte = end;
   }
-  return { capturedAt };
+  return {
+    $or: [
+      { capturedAt: range },
+      { updatedAt: range },
+      { runAt: range },
+      { completedAt: range },
+    ],
+  };
 }
 
 function buildPricingAgentQueryFilter(query = {}) {
   const filter = { ...pricingAgentEligibleFilter() };
-  const dateFilter = buildCapturedAtFilter(query.fromDate, query.toDate);
-  if (dateFilter.capturedAt) Object.assign(filter, dateFilter);
+  const dateFilter = buildActivityDateFilter(query.fromDate, query.toDate);
+  if (dateFilter.$or) Object.assign(filter, dateFilter);
   if (query.status) filter.agentStatus = query.status;
   if (query.category) filter.category = query.category;
   return filter;
@@ -70,7 +81,7 @@ export const getPricingAgentRecords = async (req, res, next) => {
     const filter = buildPricingAgentQueryFilter(req.query);
 
     const [records, total] = await Promise.all([
-      PricingQuizRecord.find(filter).sort({ capturedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean(),
+      PricingQuizRecord.find(filter).sort({ updatedAt: -1, capturedAt: -1 }).skip(skip).limit(limit).lean(),
       PricingQuizRecord.countDocuments(filter),
     ]);
 
@@ -188,7 +199,7 @@ export const exportPricingAgent = async (req, res, next) => {
     const limit = Math.min(Number(req.query.limit) || 5000, 10000);
     const filter = buildPricingAgentQueryFilter(req.query);
     const records = await PricingQuizRecord.find(filter)
-      .sort({ capturedAt: -1, createdAt: -1 })
+      .sort({ updatedAt: -1, capturedAt: -1 })
       .limit(limit)
       .lean();
 
