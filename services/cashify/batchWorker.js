@@ -9,6 +9,7 @@ import { hasFilledQuizFromSource, hasMeaningfulQuizSummary, pricingAgentEligible
 import { buildQuizSummaryFromPayload } from '../../utils/buildQuizSummary.js';
 import { computeOurOfferFromSettings } from '../../utils/offerMarkup.js';
 import { setValuationRun } from '../../utils/valuationRunCache.js';
+import { valuationLog } from '../../utils/valuationLog.js';
 
 const POLL_MS = 5000;
 /** Re-queue jobs stuck in `running` (crashed worker / hung Playwright). */
@@ -139,10 +140,23 @@ async function processOneRecord(record) {
   const finalizeRunning = async (patch) => {
     finished = true;
     setValuationRun(record._id, patch);
+    valuationLog('info', 'agent finalize', {
+      recordId: String(record._id),
+      slug: record.slug,
+      agentStatus: patch.agentStatus,
+      ourOffer: patch.ourOffer,
+      cashifyPrice: patch.cashifyPrice,
+      error: patch.error,
+      note: patch.note,
+      durationMs: patch.durationMs,
+    });
     try {
       await PricingQuizRecord.findByIdAndUpdate(record._id, patch);
     } catch (err) {
-      console.error(`[pricing-agent] Could not persist record ${record._id}:`, err.message);
+      valuationLog('error', 'agent could not persist record', {
+        recordId: String(record._id),
+        err: err.message,
+      });
     }
   };
 
@@ -436,8 +450,25 @@ export async function processRecordById(recordId) {
     runAt: record.runAt || new Date(),
   });
 
+  valuationLog('info', 'agent process start', {
+    recordId,
+    slug: record.slug,
+    category: record.category,
+    storage: record.storage || '',
+  });
+
   await processOneRecord(record);
-  return PricingQuizRecord.findById(recordId).lean();
+  const finalDoc = await PricingQuizRecord.findById(recordId).lean();
+  valuationLog('info', 'agent process end', {
+    recordId,
+    slug: record?.slug || finalDoc?.slug,
+    agentStatus: finalDoc?.agentStatus,
+    ourOffer: finalDoc?.ourOffer,
+    cashifyPrice: finalDoc?.cashifyPrice,
+    error: finalDoc?.error,
+    durationMs: finalDoc?.durationMs,
+  });
+  return finalDoc;
 }
 
 export async function enqueueOneRecord(recordId) {

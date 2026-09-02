@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { verifyAccessToken } from '../config/jwt.js';
-import clientGate from '../middleware/clientGate.js';
 import { isAllowedOrigin } from '../config/origins.js';
 import { valuationLog } from '../utils/valuationLog.js';
 import {
@@ -79,9 +78,6 @@ function valuationAuth(req, res, next) {
 }
 
 router.use(valuationClientGate);
-// Keep shared clientGate too only if we want double-check — valuationClientGate already covers it.
-// Prefer not stacking duplicate clientGate from import if unused.
-void clientGate;
 router.use(valuationAuth);
 
 router.get('/laptop/agent-status', getLaptopValuationAgentStatus);
