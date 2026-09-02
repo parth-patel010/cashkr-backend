@@ -84,7 +84,12 @@ async function attemptConnect(uri) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
       const conn = await mongoose.connect(uri, {
-        serverSelectionTimeoutMS: 10_000,
+        serverSelectionTimeoutMS: 15_000,
+        socketTimeoutMS: 60_000,
+        maxPoolSize: 20,
+        minPoolSize: 2,
+        heartbeatFrequencyMS: 10_000,
+        retryWrites: true,
       });
       hadSuccessfulConnection = true;
       console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
