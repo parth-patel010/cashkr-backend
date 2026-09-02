@@ -3,7 +3,11 @@ import {
   requestDeviceValuation,
   serializePricingRecord,
 } from '../utils/pricingQuizService.js';
-import { getAgentQueueStats, getQueuePosition } from '../services/cashify/batchWorker.js';
+import {
+  getAgentQueueStats,
+  getQueuePosition,
+  processRecordById,
+} from '../services/cashify/batchWorker.js';
 import { withDbRetry } from '../utils/dbRetry.js';
 
 function isTerminalStatus(status) {
@@ -16,6 +20,40 @@ function isSuccessStatus(status) {
 
 function displayStatus(status) {
   return status === 'skipped' ? 'overridden' : status;
+}
+
+function buildSubmitValuationResponse(result, record, queue) {
+  const base = {
+    ...result,
+    agentStatus: displayStatus(result.agentStatus),
+    queuePosition: 0,
+    agentBusy: queue.agentBusy,
+    pendingCount: queue.pending,
+  };
+
+  if (!record) return base;
+
+  const done = isTerminalStatus(record.agentStatus);
+  const success = isSuccessStatus(record.agentStatus) && record.ourOffer != null;
+
+  return {
+    ...base,
+    recordId: String(record._id),
+    agentStatus: displayStatus(record.agentStatus),
+    cached: result.cached
+      || (['skipped', 'overridden'].includes(record.agentStatus) && Boolean(record.ourOffer)),
+    done,
+    success,
+    ourOffer: record.ourOffer,
+    cashifyPrice: record.cashifyPrice,
+    internalPrice: record.internalPrice,
+    error: record.error || null,
+    note: record.note || null,
+    quizHash: record.quizHash,
+    queuePosition: ['pending', 'running'].includes(record.agentStatus)
+      ? 1
+      : 0,
+  };
 }
 
 async function submitCategoryValuation(req, res, next, category) {
@@ -49,17 +87,16 @@ async function submitCategoryValuation(req, res, next, category) {
     }
 
     const queue = await withDbRetry(() => getAgentQueueStats());
-    let queuePosition = 0;
+
     if (!result.cached && result.recordId) {
-      queuePosition = await withDbRetry(() => getQueuePosition(result.recordId));
+      const record = await withDbRetry(() => processRecordById(result.recordId));
+      return res.json(buildSubmitValuationResponse(result, record, queue));
     }
 
+    let queuePosition = 0;
     return res.json({
-      ...result,
-      agentStatus: displayStatus(result.agentStatus),
+      ...buildSubmitValuationResponse(result, null, queue),
       queuePosition,
-      agentBusy: queue.agentBusy,
-      pendingCount: queue.pending,
     });
   } catch (error) {
     next(error);

@@ -371,6 +371,34 @@ export async function getQueuePosition(recordId) {
   return ahead + 1;
 }
 
+/** Run the Cashify agent immediately for a user quote (same path as admin valuation test). */
+export async function processRecordById(recordId) {
+  const record = await PricingQuizRecord.findOneAndUpdate(
+    {
+      _id: recordId,
+      agentStatus: { $in: ['pending', 'failed'] },
+      ...pricingAgentEligibleFilter(),
+    },
+    {
+      $set: {
+        agentStatus: 'running',
+        runAt: new Date(),
+        error: null,
+        note: null,
+        completedAt: null,
+      },
+    },
+    { new: true },
+  );
+
+  if (!record) {
+    return PricingQuizRecord.findById(recordId).lean();
+  }
+
+  await processOneRecord(record);
+  return PricingQuizRecord.findById(recordId).lean();
+}
+
 export async function enqueueOneRecord(recordId) {
   const record = await PricingQuizRecord.findById(recordId);
   if (!record) {
