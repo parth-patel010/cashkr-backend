@@ -21,19 +21,19 @@ import {
 } from '../utils/offerMarkup.js';
 import { ensureAppSettings } from './appSettings.controller.js';
 
+/** Interpret YYYY-MM-DD as an IST calendar day (matches admin date picker). */
+function istDayBoundary(isoDate, endOfDay = false) {
+  const [y, m, d] = String(isoDate).split('-').map(Number);
+  const istMidnightUtc = Date.UTC(y, m - 1, d) - (5.5 * 60 * 60 * 1000);
+  if (!endOfDay) return new Date(istMidnightUtc);
+  return new Date(istMidnightUtc + (24 * 60 * 60 * 1000) - 1);
+}
+
 function buildActivityDateFilter(fromDate, toDate) {
   if (!fromDate && !toDate) return {};
   const range = {};
-  if (fromDate) {
-    const start = new Date(fromDate);
-    start.setHours(0, 0, 0, 0);
-    range.$gte = start;
-  }
-  if (toDate) {
-    const end = new Date(toDate);
-    end.setHours(23, 59, 59, 999);
-    range.$lte = end;
-  }
+  if (fromDate) range.$gte = istDayBoundary(fromDate, false);
+  if (toDate) range.$lte = istDayBoundary(toDate, true);
   return {
     $or: [
       { capturedAt: range },

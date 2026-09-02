@@ -185,7 +185,6 @@ async function processOneRecord(record) {
     const flowResult = await runFlow(record.quizPayload, {
       productUrls,
       modelName: device.modelName,
-      device,
     });
 
     const cashifyPrice = flowResult.cashifyPrice;

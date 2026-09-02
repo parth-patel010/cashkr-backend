@@ -10,6 +10,8 @@ import {
 } from '../services/cashify/batchWorker.js';
 import { withDbRetry } from '../utils/dbRetry.js';
 
+const DB_RETRY = { attempts: 8, delayMs: 1000 };
+
 function isTerminalStatus(status) {
   return ['completed', 'partial', 'skipped', 'overridden', 'failed'].includes(status);
 }
@@ -80,23 +82,28 @@ async function submitCategoryValuation(req, res, next, category) {
       brand,
       modelName,
       storage,
-    }));
+    }), DB_RETRY);
 
     if (result.error) {
       return res.status(400).json({ message: result.message || 'Unable to start valuation' });
     }
 
-    const queue = await withDbRetry(() => getAgentQueueStats());
+    const queue = await withDbRetry(() => getAgentQueueStats(), DB_RETRY);
 
+    // Run Cashify inline — same as Super Admin → Valuation Test (no background worker + polling).
     if (!result.cached && result.recordId) {
-      const record = await withDbRetry(() => processRecordById(result.recordId));
+      const record = await withDbRetry(
+        () => processRecordById(result.recordId),
+        DB_RETRY,
+      );
       return res.json(buildSubmitValuationResponse(result, record, queue));
     }
 
-    let queuePosition = 0;
     return res.json({
       ...buildSubmitValuationResponse(result, null, queue),
-      queuePosition,
+      done: Boolean(result.cached && result.ourOffer != null),
+      success: Boolean(result.cached && result.ourOffer != null),
+      queuePosition: 0,
     });
   } catch (error) {
     next(error);
@@ -122,7 +129,10 @@ export async function getMobileValuationStatus(req, res, next) {
 async function getValuationStatus(req, res, next) {
   try {
     const { recordId } = req.params;
-    const record = await withDbRetry(() => PricingQuizRecord.findById(recordId).lean());
+    const record = await withDbRetry(
+      () => PricingQuizRecord.findById(recordId).lean(),
+      DB_RETRY,
+    );
     if (!record) {
       return res.status(404).json({ message: 'Valuation not found' });
     }
@@ -133,9 +143,9 @@ async function getValuationStatus(req, res, next) {
       }
     }
 
-    const queue = await withDbRetry(() => getAgentQueueStats());
+    const queue = await withDbRetry(() => getAgentQueueStats(), DB_RETRY);
     const queuePosition = ['pending', 'running'].includes(record.agentStatus)
-      ? await withDbRetry(() => getQueuePosition(recordId))
+      ? await withDbRetry(() => getQueuePosition(recordId), DB_RETRY)
       : 0;
 
     const done = isTerminalStatus(record.agentStatus);
