@@ -40,6 +40,7 @@ function buildActivityDateFilter(fromDate, toDate) {
       { updatedAt: range },
       { runAt: range },
       { completedAt: range },
+      { createdAt: range },
     ],
   };
 }

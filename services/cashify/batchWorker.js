@@ -370,9 +370,9 @@ export async function getQueuePosition(recordId) {
   return ahead + 1;
 }
 
-/** Run the Cashify agent immediately for a user quote (same path as admin valuation test). */
+/** Run the Cashify agent for a user quote record. */
 export async function processRecordById(recordId) {
-  const record = await PricingQuizRecord.findOneAndUpdate(
+  let record = await PricingQuizRecord.findOneAndUpdate(
     {
       _id: recordId,
       agentStatus: { $in: ['pending', 'failed'] },
@@ -391,7 +391,38 @@ export async function processRecordById(recordId) {
   );
 
   if (!record) {
-    return PricingQuizRecord.findById(recordId).lean();
+    const existing = await PricingQuizRecord.findById(recordId).lean();
+    if (existing?.agentStatus === 'running') {
+      const runAt = existing.runAt ? new Date(existing.runAt).getTime() : 0;
+      const stale = !runAt || (Date.now() - runAt > STALE_RUNNING_MS);
+      if (stale) {
+        await PricingQuizRecord.findByIdAndUpdate(recordId, {
+          agentStatus: 'pending',
+          error: null,
+          note: 'Re-queued after a stale running state.',
+          runAt: null,
+          completedAt: null,
+        });
+        record = await PricingQuizRecord.findOneAndUpdate(
+          {
+            _id: recordId,
+            agentStatus: 'pending',
+            ...pricingAgentEligibleFilter(),
+          },
+          {
+            $set: {
+              agentStatus: 'running',
+              runAt: new Date(),
+              error: null,
+              note: null,
+              completedAt: null,
+            },
+          },
+          { new: true },
+        );
+      }
+    }
+    if (!record) return existing;
   }
 
   await processOneRecord(record);

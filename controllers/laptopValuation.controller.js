@@ -7,10 +7,18 @@ import {
   getAgentQueueStats,
   getQueuePosition,
   processRecordById,
+  startPricingAgentWorker,
 } from '../services/cashify/batchWorker.js';
 import { withDbRetry } from '../utils/dbRetry.js';
 
 const DB_RETRY = { attempts: 8, delayMs: 1000 };
+
+function kickValuationAgent(recordId) {
+  startPricingAgentWorker();
+  processRecordById(recordId).catch((err) => {
+    console.error(`[valuation] Agent run failed for ${recordId}:`, err.message);
+  });
+}
 
 function isTerminalStatus(status) {
   return ['completed', 'partial', 'skipped', 'overridden', 'failed'].includes(status);
@@ -90,13 +98,21 @@ async function submitCategoryValuation(req, res, next, category) {
 
     const queue = await withDbRetry(() => getAgentQueueStats(), DB_RETRY);
 
-    // Run Cashify inline — same as Super Admin → Valuation Test (no background worker + polling).
+    // Save record now; run Cashify in background. Frontend keeps popup open and polls status.
     if (!result.cached && result.recordId) {
-      const record = await withDbRetry(
-        () => processRecordById(result.recordId),
+      kickValuationAgent(result.recordId);
+      const queuePosition = await withDbRetry(
+        () => getQueuePosition(result.recordId),
         DB_RETRY,
       );
-      return res.json(buildSubmitValuationResponse(result, record, queue));
+      return res.json({
+        ...buildSubmitValuationResponse(result, null, queue),
+        recordId: result.recordId,
+        agentStatus: 'running',
+        done: false,
+        success: false,
+        queuePosition,
+      });
     }
 
     return res.json({

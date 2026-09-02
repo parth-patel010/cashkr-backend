@@ -179,12 +179,15 @@ export async function upsertPricingQuizRecord({
     update.cashifyProductUrl = existingCompleted.cashifyProductUrl || '';
     update.overriddenFromRecordId = String(existingCompleted._id);
     update.note = 'Quiz overridden — same quiz always returns this locked price.';
-    update.completedAt = existingCompleted.completedAt || new Date();
+    update.completedAt = new Date();
+    update.capturedAt = captureTime;
   } else {
     const matchFilter = buildUpsertFilter(sourceType, sourceId, slug, quizHash);
     const current = await PricingQuizRecord.findOne(matchFilter).lean();
-    // Re-queue failed jobs; leave running alone so the user keeps waiting on the same record.
-    if (!current || ['failed', 'pending'].includes(current.agentStatus)) {
+    const shouldQueue = sourceType === 'user_valuation'
+      || !current
+      || ['failed', 'pending'].includes(current.agentStatus);
+    if (shouldQueue) {
       update.agentStatus = 'pending';
       update.error = null;
       update.note = null;
