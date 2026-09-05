@@ -15,6 +15,13 @@ const pricingQuizRecordSchema = new mongoose.Schema({
     default: 'user_quiz',
   },
   sourceId: { type: String, default: '' },
+  /** Where the quiz/valuation was started from. */
+  clientPlatform: {
+    type: String,
+    enum: ['App', 'Website'],
+    default: 'Website',
+    index: true,
+  },
   /** Catalog variant base ("get upto") — used to prioritize the valuation queue. */
   basePrice: { type: Number, default: 0, index: true },
   internalPrice: { type: Number, default: null },

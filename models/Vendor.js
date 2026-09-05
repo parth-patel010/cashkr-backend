@@ -22,6 +22,15 @@ const vendorSchema = new mongoose.Schema(
     },
     managerPhone: { type: String, default: '' },
     orderCreditCost: { type: Number, default: 0 },
+    /** Optional per-vendor commission brackets; empty = use AppSettings.vendorCommission.defaultBrackets */
+    commissionBrackets: {
+      type: [{
+        min: { type: Number, default: 0 },
+        max: { type: Number, default: null },
+        percent: { type: Number, default: 0 },
+      }],
+      default: [],
+    },
     vendorCode: {
       type: String,
       unique: true,

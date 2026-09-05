@@ -147,10 +147,28 @@ const orderSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-  /** Credits deducted from vendor when they accepted this lead (from device model cost). */
+  /** Credits deducted from vendor when they accepted this lead (legacy). */
   vendorCreditCharged: {
     type: Number,
     default: 0,
+  },
+  /** Wallet ₹ commission deducted when vendor accepted this lead. */
+  vendorCommissionCharged: {
+    type: Number,
+    default: 0,
+  },
+  vendorCommissionPercent: {
+    type: Number,
+    default: 0,
+  },
+  customerIdProof: {
+    type: {
+      idType: { type: String, default: '' },
+      frontUrl: { type: String, default: '' },
+      backUrl: { type: String, default: '' },
+      uploadedAt: { type: Date, default: null },
+    },
+    default: () => ({}),
   },
   deviceReport: {
     type: mongoose.Schema.Types.Mixed,

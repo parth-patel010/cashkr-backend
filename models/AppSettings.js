@@ -101,6 +101,16 @@ const appSettingsSchema = new mongoose.Schema(
       },
       fallbackFixedInr: { type: Number, default: 1000 },
     },
+    vendorCommission: {
+      defaultBrackets: {
+        type: [{
+          min: { type: Number, default: 0 },
+          max: { type: Number, default: null },
+          percent: { type: Number, default: 0 },
+        }],
+        default: undefined,
+      },
+    },
   },
   { timestamps: true },
 );

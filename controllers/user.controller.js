@@ -5,6 +5,7 @@ import { validationResult } from 'express-validator';
 import { maskPaymentMethods } from '../utils/maskPayment.js';
 import { ensureAppSettings } from './appSettings.controller.js';
 import { upsertPricingQuizRecord } from '../utils/pricingQuizService.js';
+import { resolveClientPlatform } from '../utils/clientPlatform.js';
 
 const DEFAULT_REFERRAL_BONUS = 100;
 
@@ -134,6 +135,7 @@ export const reportLastQuiz = async (req, res, next) => {
         quizSummary: summary,
         sourceType: 'user_quiz',
         sourceId: String(req.user.id),
+        clientPlatform: resolveClientPlatform(req),
       }).catch(() => {});
     }
 

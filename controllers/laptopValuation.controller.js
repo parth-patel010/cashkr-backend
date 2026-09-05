@@ -12,6 +12,7 @@ import {
 import { withDbRetry, isMongoRetryableError } from '../utils/dbRetry.js';
 import { getValuationRun, mergeValuationRun, setValuationRun } from '../utils/valuationRunCache.js';
 import { valuationLog } from '../utils/valuationLog.js';
+import { resolveClientPlatform, sanitizeValuationPublicError } from '../utils/clientPlatform.js';
 
 const DB_RETRY = { attempts: 12, delayMs: 1000 };
 
@@ -55,7 +56,7 @@ function buildStatusResponse(record, queue = {}) {
     ourOffer: record.ourOffer ?? null,
     cashifyPrice: record.cashifyPrice ?? null,
     internalPrice: record.internalPrice ?? null,
-    error: record.error || null,
+    error: record.error ? sanitizeValuationPublicError(record.error) : null,
     note: record.note || null,
     quizHash: record.quizHash,
     queuePosition: queue.queuePosition ?? 0,
@@ -138,6 +139,7 @@ async function submitCategoryValuation(req, res, next, category) {
       brand,
       modelName,
       storage,
+      clientPlatform: resolveClientPlatform(req),
     }), DB_RETRY);
 
     if (result.error) {
@@ -147,7 +149,7 @@ async function submitCategoryValuation(req, res, next, category) {
         error: result.error,
         message: result.message,
       });
-      return res.status(400).json({ message: result.message || 'Unable to start valuation' });
+      return res.status(400).json({ message: sanitizeValuationPublicError(result.message || 'Unable to start valuation') });
     }
 
     const queue = await loadQueueStatsSafe();

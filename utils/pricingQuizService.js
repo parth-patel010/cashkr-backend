@@ -85,6 +85,7 @@ export function serializePricingRecord(doc) {
     quizHash: r.quizHash,
     sourceType: r.sourceType,
     sourceId: r.sourceId,
+    clientPlatform: r.clientPlatform === 'App' ? 'App' : 'Website',
     basePrice: r.basePrice ?? 0,
     internalPrice: r.internalPrice,
     cashifyPrice: r.cashifyPrice,
@@ -123,6 +124,7 @@ export async function upsertPricingQuizRecord({
   quizSummary = [],
   sourceType = 'user_quiz',
   sourceId = '',
+  clientPlatform = 'Website',
   capturedAt,
 }) {
   const allowed = ['mobile', 'laptop', 'mac'];
@@ -164,6 +166,7 @@ export async function upsertPricingQuizRecord({
     quizSummary: summary,
     sourceType,
     sourceId: String(sourceId || ''),
+    clientPlatform: clientPlatform === 'App' ? 'App' : 'Website',
     basePrice,
     internalPrice,
     hasFilledQuiz: true,
@@ -251,6 +254,7 @@ export async function requestDeviceValuation({
   modelName,
   storage,
   category = 'laptop',
+  clientPlatform = 'Website',
 }) {
   const allowed = ['mobile', 'laptop', 'mac'];
   if (!allowed.includes(category)) {
@@ -293,6 +297,7 @@ export async function requestDeviceValuation({
     quizSummary,
     sourceType: 'user_valuation',
     sourceId: String(userId || ''),
+    clientPlatform,
   });
 
   if (!record) {

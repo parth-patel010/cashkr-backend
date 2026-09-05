@@ -51,6 +51,9 @@ function buildPricingAgentQueryFilter(query = {}) {
   if (dateFilter.$or) Object.assign(filter, dateFilter);
   if (query.status) filter.agentStatus = query.status;
   if (query.category) filter.category = query.category;
+  if (query.clientPlatform === 'App' || query.clientPlatform === 'Website') {
+    filter.clientPlatform = query.clientPlatform;
+  }
   return filter;
 }
 

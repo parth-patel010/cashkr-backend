@@ -66,6 +66,13 @@ import {
   adminAssignOrderVendor,
 } from '../controllers/adminVendor.controller.js';
 import {
+  adminGetVendorCommissionSettings,
+  adminSaveVendorCommissionSettings,
+  adminListVendorCommissions,
+  adminGetVendorCommissionDetail,
+  adminUpdateVendorCommissionBrackets,
+} from '../controllers/adminVendorCommission.controller.js';
+import {
   adminGetAppSettings,
   adminUpdateAppSettings,
 } from '../controllers/appSettings.controller.js';
@@ -228,6 +235,12 @@ router.put('/vendors/:id', adminUpdateVendor);
 router.post('/vendors/:id/adjust-wallet', adminAdjustWallet);
 router.post('/partners/:id/approve-vendor', adminApprovePartnerAsVendor);
 router.patch('/orders/:orderId/assign-vendor', adminAssignOrderVendor);
+
+router.get('/vendor-commission/settings', adminGetVendorCommissionSettings);
+router.put('/vendor-commission/settings', adminSaveVendorCommissionSettings);
+router.get('/vendor-commission', adminListVendorCommissions);
+router.get('/vendor-commission/:id', adminGetVendorCommissionDetail);
+router.put('/vendor-commission/:id', adminUpdateVendorCommissionBrackets);
 
 router.get('/vendor-training', adminListTraining);
 router.post('/vendor-training', adminUpsertTraining);

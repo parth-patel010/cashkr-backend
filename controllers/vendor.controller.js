@@ -17,7 +17,37 @@ import {
 import { createInboxNotifications } from '../utils/userInbox.js';
 import { getRazorpay, getRazorpayKeyId, verifyPaymentSignature } from '../utils/razorpay.js';
 import { creditVendorTopup } from '../utils/vendorTopup.js';
-import { creditCostBySlugs, resolveOrderCreditCost } from '../utils/orderCreditCost.js';
+import {
+  computeVendorCommissionInr,
+  resolveVendorCommissionBrackets,
+} from '../utils/vendorCommission.js';
+
+const resolveOfferPrice = (order) => {
+  const pb = order?.priceBreakdown || {};
+  const candidates = [
+    pb.quotedFinalPrice,
+    pb.finalPrice,
+    order?.price,
+  ];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+};
+
+const resolveBasePriceForCommission = (order, deviceDoc) => {
+  const fromOrder = Number(order?.priceBreakdown?.basePrice);
+  if (Number.isFinite(fromOrder) && fromOrder > 0) return fromOrder;
+  const storage = String(order?.device?.storage || order?.device?.capacity || '').trim();
+  const variants = Array.isArray(deviceDoc?.variants) ? deviceDoc.variants : [];
+  if (storage && variants.length) {
+    const match = variants.find((v) => String(v.storage || '').trim() === storage);
+    if (match && Number(match.basePrice) > 0) return Number(match.basePrice);
+  }
+  if (variants.length && Number(variants[0].basePrice) > 0) return Number(variants[0].basePrice);
+  return resolveOfferPrice(order);
+};
 
 const pushSellOrderUpdate = async (order, status, otp = null) => {
   if (!order?.userId) return;
@@ -101,7 +131,10 @@ const mapOrderCard = (o, imageUrl = '') => {
     price: o.priceBreakdown?.finalPrice || 0,
     incentive: o.vendorIncentive || 0,
     creditsRequired: o.creditsRequired != null ? Number(o.creditsRequired) : 0,
+    commissionRequired: o.commissionRequired != null ? Number(o.commissionRequired) : 0,
+    commissionPercent: o.commissionPercent != null ? Number(o.commissionPercent) : 0,
     vendorCreditCharged: o.vendorCreditCharged || 0,
+    vendorCommissionCharged: o.vendorCommissionCharged || 0,
     customerName: o.pickup?.name || '',
     customerPhone: o.pickup?.phone || '',
     alternatePhone: o.pickup?.alternatePhone || '',
@@ -128,22 +161,38 @@ const mapOrderCard = (o, imageUrl = '') => {
   };
 };
 
-const attachImagesToOrders = async (orders, vendorDefaultCost = 0) => {
+const attachImagesToOrders = async (orders, vendorDoc = null) => {
   const slugs = [...new Set(orders.map((o) => o.device?.slug).filter(Boolean))];
   const bySlugImage = {};
-  const bySlugCredit = await creditCostBySlugs(slugs);
+  const bySlugDevice = {};
   if (slugs.length) {
-    const devices = await Device.find({ slug: { $in: slugs } }).select('slug imageUrl').lean();
+    const devices = await Device.find({ slug: { $in: slugs } })
+      .select('slug imageUrl variants')
+      .lean();
     for (const d of devices) {
       bySlugImage[d.slug] = d.imageUrl || '';
+      bySlugDevice[d.slug] = d;
     }
   }
-  const fallback = Math.max(0, Number(vendorDefaultCost) || 0);
+  const brackets = vendorDoc
+    ? await resolveVendorCommissionBrackets(vendorDoc)
+    : [];
   return orders.map((o) => {
-    const modelCost = bySlugCredit[o.device?.slug] || 0;
-    const creditsRequired = modelCost > 0 ? modelCost : fallback;
+    const offerPrice = resolveOfferPrice(o);
+    const basePrice = resolveBasePriceForCommission(o, bySlugDevice[o.device?.slug]);
+    const charged = Number(o.vendorCommissionCharged) || 0;
+    const { commissionInr, percent } = computeVendorCommissionInr({
+      offerPrice,
+      basePrice,
+      brackets,
+    });
     return mapOrderCard(
-      { ...o, creditsRequired },
+      {
+        ...o,
+        creditsRequired: 0,
+        commissionRequired: charged > 0 ? charged : commissionInr,
+        commissionPercent: Number(o.vendorCommissionPercent) || percent,
+      },
       bySlugImage[o.device?.slug] || '',
     );
   });
@@ -280,7 +329,7 @@ export const getHome = async (req, res, next) => {
         .lean(),
     ]);
 
-    const upcomingOrders = await attachImagesToOrders(upcomingRaw);
+    const upcomingOrders = await attachImagesToOrders(upcomingRaw, req.vendor);
 
     res.json({
       vendor: publicVendor(req.vendor),
@@ -314,16 +363,18 @@ export const listAvailableOrders = async (req, res, next) => {
       orders = await Order.find(query).sort({ createdAt: -1 }).limit(100).lean();
     }
 
-    const vendorDoc = await Vendor.findById(req.vendor.id).select('credits orderCreditCost').lean();
-    const vendorDefaultCost = Number(vendorDoc?.orderCreditCost) || 0;
-    const vendorCredits = Number(vendorDoc?.credits) || 0;
-    const cards = await attachImagesToOrders(orders, vendorDefaultCost);
+    const vendorDoc = await Vendor.findById(req.vendor.id)
+      .select('credits orderCreditCost walletBalance commissionBrackets')
+      .lean();
+    const vendorWallet = Number(vendorDoc?.walletBalance) || 0;
+    const cards = await attachImagesToOrders(orders, vendorDoc);
     res.json({
       orders: cards,
-      vendorCredits,
+      vendorCredits: Number(vendorDoc?.credits) || 0,
+      vendorWalletBalance: vendorWallet,
       creditRate: { rupeesPerCredit: 100 },
-      /** @deprecated Prefer per-order creditsRequired; kept for older vendor apps */
-      creditsRequired: vendorDefaultCost,
+      /** @deprecated Prefer per-order commissionRequired */
+      creditsRequired: 0,
       servicePincodes: resolved.servicePincodes,
       appliedPincodes: resolved.appliedPincodes,
       pinStatus: resolved.pinStatus,
@@ -349,13 +400,26 @@ export const acceptOrder = async (req, res, next) => {
       return res.status(409).json({ message: 'Order not available or already assigned' });
     }
 
-    const cost = await resolveOrderCreditCost(pending, vendorDoc.orderCreditCost);
-    const vendorCredits = Number(vendorDoc.credits || 0);
-    if (cost > 0 && vendorCredits < cost) {
+    let deviceDoc = null;
+    if (pending.device?.slug) {
+      deviceDoc = await Device.findOne({ slug: pending.device.slug }).select('variants').lean();
+    }
+    const offerPrice = resolveOfferPrice(pending);
+    const basePrice = resolveBasePriceForCommission(pending, deviceDoc);
+    const brackets = await resolveVendorCommissionBrackets(vendorDoc);
+    const { commissionInr, percent } = computeVendorCommissionInr({
+      offerPrice,
+      basePrice,
+      brackets,
+    });
+
+    const walletBalance = Number(vendorDoc.walletBalance || 0);
+    if (commissionInr > 0 && walletBalance < commissionInr) {
       return res.status(402).json({
-        message: `Insufficient credits. This model needs ${cost} credit(s). You have ${vendorCredits}. Add money (₹100 = 1 credit).`,
-        creditsRequired: cost,
-        vendorCredits,
+        message: `Insufficient wallet balance. Commission to accept is ₹${commissionInr}. You have ₹${walletBalance}. Add money to continue.`,
+        commissionRequired: commissionInr,
+        commissionPercent: percent,
+        vendorWalletBalance: walletBalance,
       });
     }
 
@@ -373,7 +437,9 @@ export const acceptOrder = async (req, res, next) => {
           partnerName: vendorDoc.name,
           partnerPhone: vendorDoc.phone,
           vendorIncentive: Number(req.body?.incentive) || 0,
-          vendorCreditCharged: cost,
+          vendorCreditCharged: 0,
+          vendorCommissionCharged: commissionInr,
+          vendorCommissionPercent: percent,
         },
       },
       { new: true },
@@ -383,25 +449,38 @@ export const acceptOrder = async (req, res, next) => {
       return res.status(409).json({ message: 'Order not available or already assigned' });
     }
 
-    if (cost > 0) {
-      vendorDoc.credits = Number(vendorDoc.credits || 0) - cost;
+    if (commissionInr > 0) {
+      vendorDoc.walletBalance = Math.max(0, Number(vendorDoc.walletBalance || 0) - commissionInr);
       await vendorDoc.save();
       await VendorLedgerEntry.create({
         vendorId: vendorDoc._id,
         entryType: 'order',
-        accountType: 'credit',
-        title: `Accept ${order.orderId}`,
-        amount: 0,
-        credits: -cost,
+        accountType: 'commission',
+        title: `Commission · Accept ${order.orderId}`,
+        amount: -commissionInr,
+        credits: 0,
         status: 'Completed',
         serviceNumber: order.orderId,
+        meta: {
+          type: 'commission_deduct',
+          percent,
+          offerPrice,
+          basePrice,
+        },
       });
     }
 
     res.json({
-      order: mapOrderCard(order),
+      order: mapOrderCard({
+        ...order.toObject(),
+        commissionRequired: commissionInr,
+        commissionPercent: percent,
+      }),
       message: 'Order accepted',
-      creditsCharged: cost,
+      commissionCharged: commissionInr,
+      commissionPercent: percent,
+      vendorWalletBalance: Number(vendorDoc.walletBalance || 0),
+      creditsCharged: 0,
       vendorCredits: Number(vendorDoc.credits || 0),
     });
   } catch (error) {
@@ -465,7 +544,7 @@ export const listProgressOrders = async (req, res, next) => {
     })
       .sort({ assignedAt: -1 })
       .lean();
-    res.json({ orders: await attachImagesToOrders(orders) });
+    res.json({ orders: await attachImagesToOrders(orders, req.vendor) });
   } catch (error) {
     next(error);
   }
@@ -487,7 +566,7 @@ export const listHistoryOrders = async (req, res, next) => {
 
     const orders = await Order.find(q).sort({ updatedAt: -1 }).limit(200).lean();
     res.json({
-      orders: await attachImagesToOrders(orders),
+      orders: await attachImagesToOrders(orders, req.vendor),
       counts: {
         completed: await Order.countDocuments({ vendorId: req.vendor.id, status: 'completed' }),
         failed: await Order.countDocuments({ vendorId: req.vendor.id, status: 'failed' }),
@@ -556,6 +635,10 @@ export const getOrderDetail = async (req, res, next) => {
         ...mapOrderCard(order, imageUrl),
         device: order.device,
         priceBreakdown: order.priceBreakdown,
+        quizSummary: Array.isArray(order.device?.answerSummary)
+          ? order.device.answerSummary
+          : (Array.isArray(order.deviceReport?.quizSummary) ? order.deviceReport.quizSummary : []),
+        quizAnswers: order.device?.quizAnswers || order.deviceReport?.quizAnswers || null,
         pickup: pickupPublic,
         imei1: hidePii ? '' : order.imei1,
         imei2: hidePii ? '' : order.imei2,
@@ -565,7 +648,10 @@ export const getOrderDetail = async (req, res, next) => {
         reachedAt: order.reachedAt,
         pickupOtpVerifiedAt: order.pickupOtpVerifiedAt,
         pickupPhotos: order.pickupPhotos || [],
+        customerIdProof: order.customerIdProof || {},
         vendorPriceAdjustment: order.vendorPriceAdjustment || 0,
+        vendorCommissionCharged: order.vendorCommissionCharged || 0,
+        vendorCommissionPercent: order.vendorCommissionPercent || 0,
         hidePii,
         otpPending: Boolean(order.reachedAt && !order.pickupOtpVerifiedAt),
       },
@@ -1045,6 +1131,54 @@ export const verifyPickupOtp = async (req, res, next) => {
   }
 };
 
+export const uploadCustomerIdProof = async (req, res, next) => {
+  try {
+    const idType = String(req.body?.idType || req.body?.type || '').trim();
+    const frontUrl = String(req.body?.frontUrl || '').trim();
+    const backUrl = String(req.body?.backUrl || '').trim();
+    const allowed = ['aadhaar', 'pan', 'dl', 'other', 'Aadhaar', 'PAN', 'DL', 'Other'];
+    if (!idType || !allowed.map((a) => a.toLowerCase()).includes(idType.toLowerCase())) {
+      return res.status(400).json({ message: 'Select ID type: Aadhaar, PAN, DL, or Other' });
+    }
+    if (!frontUrl || !backUrl) {
+      return res.status(400).json({ message: 'Upload both front and back ID images' });
+    }
+    if (frontUrl.length > 1_800_000 || backUrl.length > 1_800_000) {
+      return res.status(413).json({ message: 'Photo too large. Retake with lower quality.' });
+    }
+
+    const order = await Order.findOne({
+      ...orderMatch(req.params.orderId),
+      vendorId: req.vendor.id,
+    });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (!order.pickupOtpVerifiedAt) {
+      return res.status(400).json({ message: 'Verify pickup OTP first' });
+    }
+
+    const normalizedType = idType.toLowerCase() === 'dl' ? 'DL'
+      : idType.toLowerCase() === 'pan' ? 'PAN'
+        : idType.toLowerCase() === 'aadhaar' ? 'Aadhaar'
+          : 'Other';
+
+    order.customerIdProof = {
+      idType: normalizedType,
+      frontUrl,
+      backUrl,
+      uploadedAt: new Date(),
+    };
+    await order.save();
+
+    res.json({
+      message: 'Customer ID uploaded',
+      customerIdProof: order.customerIdProof,
+      order: mapOrderCard(order),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const uploadPickupPhotos = async (req, res, next) => {
   try {
     const photos = Array.isArray(req.body.photos) ? req.body.photos : [];
@@ -1175,6 +1309,12 @@ export const markDelivered = async (req, res, next) => {
       order.pickupPhotos.every((p) => p?.url);
     if (!photosOk) {
       return res.status(400).json({ message: 'Upload 6 angle photos first' });
+    }
+    const idOk = Boolean(
+      order.customerIdProof?.frontUrl && order.customerIdProof?.backUrl && order.customerIdProof?.idType,
+    );
+    if (!idOk) {
+      return res.status(400).json({ message: 'Upload customer ID front and back before completing' });
     }
 
     const adj = Number(order.vendorPriceAdjustment) || 0;

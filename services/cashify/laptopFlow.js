@@ -107,6 +107,14 @@ async function fillSystemConfiguration(page, quiz) {
 
 function gpuLabel(quiz, modelName = '') {
   const model = String(modelName || quiz.modelName || quiz.slug || '').toLowerCase();
+  const brand = String(quiz.brand || '').toLowerCase();
+  const isMac = quiz.category === 'mac'
+    || brand === 'apple'
+    || /macbook|imac|mac mini/.test(model);
+  // Cashify Mac flow does not ask dedicated GPU
+  if (isMac) return 'Graphics Card not available';
+  // Explicit user answer wins over gaming heuristic
+  if (quiz.hasGpu === 'no' || quiz.hasGpu === false) return 'Graphics Card not available';
   const gaming = /nitro|tuf|legion|omen|alienware|rog|gaming|g15|g16|predator|victus|katana|crosshair/.test(model);
   const hasGpu = quiz.hasGpu === 'yes' || quiz.hasGpu === true || gaming;
   const gpuWorking = quiz.isGpuWorking === 'yes' || quiz.isGpuWorking === true;
@@ -232,7 +240,11 @@ async function answerFeatureStep(page, quiz, modelName = '') {
 async function answerFeatures(page, quiz, modelName = '') {
   await clickLabel(page, SCREEN_SIZE[quiz.screenSize] || '14-15 inch');
   await clickLabel(page, touchScreenLabel(quiz));
-  await clickLabel(page, gpuLabel(quiz, modelName));
+  const bodyText = (await page.locator('body').innerText().catch(() => '')).toLowerCase();
+  // Mac Cashify pages often omit dedicated GPU options
+  if (/graphics card|external graphics/.test(bodyText)) {
+    await clickLabel(page, gpuLabel(quiz, modelName)).catch(() => {});
+  }
   const accessories = quiz.accessories || [];
   const accList = Array.isArray(accessories) ? accessories : [accessories].filter(Boolean);
   await clickLabel(page, accList.includes('box') ? 'Original Box with same serial number' : 'Box Not Available or Damaged');
@@ -312,8 +324,10 @@ async function answerCurrentQuestion(page, quiz, modelName) {
     return kind;
   }
   if (kind === 'overall') {
-    const sw = quiz.softwareIssue || 'no';
-    await clickLabel(page, sw === 'yes' ? 'Laptop have Software issue' : 'No software issue');
+    // Cashify rarely shows this now — always pick "No software issue" if it appears
+    await clickLabel(page, 'No software issue').catch(() =>
+      clickLabel(page, 'No Software issue'),
+    );
     await clickContinue(page);
     return kind;
   }

@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import { upsertPricingQuizRecord } from '../utils/pricingQuizService.js';
 import { resolveLockedOrderPrice } from '../utils/orderPriceLock.js';
+import { resolveClientPlatform } from '../utils/clientPlatform.js';
 
 const DUPLICATE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -108,7 +109,7 @@ export const createOrder = async (req, res, next) => {
         quizSummary: Array.isArray(device.answerSummary) ? device.answerSummary : [],
         sourceType: 'order',
         sourceId: order.orderId,
-        internalPrice: resolvedPriceBreakdown?.internalPrice ?? resolvedPriceBreakdown?.finalPrice ?? null,
+        clientPlatform: resolveClientPlatform(req),
         capturedAt: order.createdAt,
       }).catch(() => {});
     }

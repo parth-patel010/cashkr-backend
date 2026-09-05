@@ -29,6 +29,7 @@ import {
   markReached,
   verifyPickupOtp,
   uploadPickupPhotos,
+  uploadCustomerIdProof,
   setPriceAdjustment,
   markDelivered,
 } from '../controllers/vendor.controller.js';
@@ -58,6 +59,7 @@ router.post('/orders/:orderId/call-log', logCall);
 router.post('/orders/:orderId/reached', markReached);
 router.post('/orders/:orderId/verify-pickup-otp', verifyPickupOtp);
 router.post('/orders/:orderId/pickup-photos', uploadPickupPhotos);
+router.post('/orders/:orderId/customer-id-proof', uploadCustomerIdProof);
 router.patch('/orders/:orderId/price-adjustment', setPriceAdjustment);
 router.post('/orders/:orderId/delivered', markDelivered);
 router.patch('/orders/:orderId/status', updateOrderStatus);
